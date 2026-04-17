@@ -11,36 +11,37 @@ Custom [Claude Code](https://claude.com/claude-code) skills for the Ophelios dev
 
 ## Installation
 
-### Option 1: Global (all projects)
-
-Symlink into your global Claude skills directory:
+Clone directly into your Claude Code skills directory:
 
 ```bash
-ln -s /path/to/claude-skills/zephyrus ~/.claude/skills/zephyrus
-ln -s /path/to/claude-skills/leaf ~/.claude/skills/leaf
+git clone https://github.com/ophelios-studio/claude-skills.git ~/.claude/skills/ophelios
 ```
 
-The skills will be available in every Claude Code session.
+All skills are available immediately in every Claude Code session. To update:
 
-### Option 2: Per-project
+```bash
+cd ~/.claude/skills/ophelios && git pull
+```
 
-Symlink into a specific project's `.claude/skills/` directory:
+### Install specific skills only
+
+If you only want certain skills, clone the repo anywhere and symlink:
+
+```bash
+git clone https://github.com/ophelios-studio/claude-skills.git ~/claude-skills
+ln -s ~/claude-skills/leaf ~/.claude/skills/leaf
+ln -s ~/claude-skills/zephyrus ~/.claude/skills/zephyrus
+```
+
+### Per-project
+
+Add skills to a specific project instead of globally:
 
 ```bash
 cd my-project
 mkdir -p .claude/skills
 ln -s /path/to/claude-skills/leaf .claude/skills/leaf
 ```
-
-### Option 3: Add directory
-
-Pass the repo as an additional directory when launching Claude Code:
-
-```bash
-claude --add-dir /path/to/claude-skills
-```
-
-Skills from `.claude/skills/` equivalents within added directories are loaded automatically.
 
 ## How Skills Work
 
