@@ -1,58 +1,57 @@
-# Claude Code Skills
+# ophelios-studio/skills
 
-Custom [Claude Code](https://claude.com/claude-code) skills for the Ophelios development ecosystem. These skills give Claude deep knowledge of our frameworks and tools so it can assist effectively without guessing.
+Empirical agent skills for AI coding assistants — Claude Code, Cursor, Codex,
+Cline, Gemini CLI, and any other tool implementing the
+[agentskills.io](https://agentskills.io) spec.
 
-## Available Skills
+Every skill is **derived from hands-on integration work**, not just docs.
+Every gotcha has a reproducible repro path documented in the skill itself,
+plus a minimal runnable example under `examples/<skill>/`.
 
-| Skill | Description |
-|-------|-------------|
-| **zephyrus** | Zephyrus Framework - attribute routing, controllers, middleware, config, localization |
-| **leaf** | Zephyrus Leaf - static site generator, BuildCommand, multi-locale, SEO, content system |
-
-## Installation
-
-Clone directly into your Claude Code skills directory:
+## Install
 
 ```bash
-git clone https://github.com/ophelios-studio/claude-skills.git ~/.claude/skills/ophelios
+# all skills
+npx skills add ophelios-studio/skills
+
+# one specific skill
+npx skills add ophelios-studio/skills --skill 0g
+npx skills add ophelios-studio/skills --skill axl
+npx skills add ophelios-studio/skills --skill axl-pubsub
+npx skills add ophelios-studio/skills --skill leaf
+npx skills add ophelios-studio/skills --skill zephyrus
 ```
 
-All skills are available immediately in every Claude Code session. To update:
+The CLI installs to `~/.agents/skills/<name>/` and symlinks into your
+agent's skill directory (e.g. `~/.claude/skills/`).
 
-```bash
-cd ~/.claude/skills/ophelios && git pull
+## Skills
+
+| Skill        | What it covers                                                     |
+|--------------|--------------------------------------------------------------------|
+| `0g`         | 0G Chain (Galileo, 16602), Storage, Compute — empirical patterns   |
+| `axl`        | Gensyn AXL HTTP API — protocol primitives, library-agnostic        |
+| `axl-pubsub` | The `axl-pubsub` gossip library on top of AXL — when and how       |
+| `leaf`       | Zephyrus Leaf static-site generator                                |
+| `zephyrus`   | Zephyrus PHP framework                                             |
+
+## Repo layout
+
+```
+skills/<name>/SKILL.md      # the skill itself (frontmatter + body)
+examples/<name>/            # minimal runnable scripts a dev can verify
 ```
 
-### Install specific skills only
+## Philosophy
 
-If you only want certain skills, clone the repo anywhere and symlink:
+Skills written from docs alone go stale fast. These skills capture what
+actually happens when you run real code against real testnets and real
+infrastructure — empirical reality first, official documentation second.
 
-```bash
-git clone https://github.com/ophelios-studio/claude-skills.git ~/claude-skills
-ln -s ~/claude-skills/leaf ~/.claude/skills/leaf
-ln -s ~/claude-skills/zephyrus ~/.claude/skills/zephyrus
-```
-
-### Per-project
-
-Add skills to a specific project instead of globally:
-
-```bash
-cd my-project
-mkdir -p .claude/skills
-ln -s /path/to/claude-skills/leaf .claude/skills/leaf
-```
-
-## How Skills Work
-
-Skills are automatically loaded into Claude's context based on their `description` field. When Claude detects that a skill is relevant (e.g., it sees Zephyrus imports or a `config.yml` with a `leaf:` section), it applies the skill's knowledge.
-
-You can also invoke a skill manually with `/skill-name` in the Claude Code prompt.
-
-## Contributing
-
-Each skill is a directory containing a `SKILL.md` file with YAML frontmatter and markdown instructions. See the [Claude Code skills documentation](https://docs.anthropic.com/en/docs/claude-code/skills) for the full format specification.
+Every gotcha in every skill is reproducible: cite the file:line of the
+production code that taught us, link the live transaction or test run
+that proves it.
 
 ## License
 
-MIT
+MIT.
