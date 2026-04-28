@@ -1,0 +1,45 @@
+application:
+  environment: !env APP_ENV, dev
+  debug: !env APP_DEBUG, true
+
+session:
+  name: "EXAMPLE_SESSION"
+  lifetime: 0
+  http_only: true
+  secure: false
+  same_site: "Lax"
+  cookie_path: "/"
+
+security:
+  force_https: false
+  allowed_hosts: []
+  max_body_size: 10485760
+  csrf:
+    enabled: true
+    auto_html: false
+
+localization:
+  locale: "en"
+  supported_locales: ["en"]
+  locale_path: "locale"
+  timezone: !env APP_TIMEZONE, UTC
+
+render:
+  engine: "latte"
+  directory: "app/Views"
+  cache: "cache/latte"
+  mode: "always"
+
+# Database section is optional in this hello-world; uncomment + fill in
+# to exercise the Broker/Service/Entity pattern.
+# database:
+#   host: !env DB_HOST, localhost
+#   port: !env DB_PORT, 5432
+#   database: !env DB_NAME, app
+#   username: !env DB_USERNAME, dev
+#   password: !env DB_PASSWORD, dev
+#   charset: "utf8"
+
+project:
+  name: "Zephyrus Example"
+  version: "0.1.0"

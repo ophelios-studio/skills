@@ -1,0 +1,16 @@
+{*
+  Latte template — extends a hypothetical layouts/main.latte.
+  This stub demonstrates the conventional shape; the controller currently
+  returns JSON, so this file isn't rendered by HomeController.
+
+  In a real project you'd:
+    1. Create app/Views/layouts/main.latte with {block content}{/block}
+    2. Add a `RenderResponses` trait usage to HomeController
+    3. Return $this->render('home', ['title' => 'Home']) instead of JSON
+*}
+{layout 'layouts/main.latte'}
+
+{block content}
+<h1>{$title}</h1>
+<p>Hello from Zephyrus.</p>
+{/block}
