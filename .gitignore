@@ -1,0 +1,13 @@
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Node (in case examples create node_modules)
+node_modules/
+
+# Local env files
+.env
+.env.local
