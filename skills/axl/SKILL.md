@@ -1,14 +1,9 @@
 ---
 name: axl
-description: Use when building apps on top of Gensyn AXL (github.com/gensyn-ai/axl), the Go P2P node that exposes a local HTTP API on 127.0.0.1:9002 for Yggdrasil-mesh messaging. Trigger on references to the AXL HTTP API (/topology, /send, /recv, /mcp/, /a2a/), node-config.json, X-Destination-Peer-Id / X-From-Peer-Id headers, the AXL binary, or containerfiles/Dockerfile from the AXL repo. Covers the three core endpoints, the X-From-Peer-Id pubkey-prefix gotcha, MCP/A2A envelope hijacking, the 0.0.0.0 bind requirement, polling /recv, no-native-pubsub, config templates, and Docker compose patterns. Library-agnostic — points to the axl-pubsub skill if you need pub/sub fan-out.
+description: Use when building apps on top of Gensyn AXL (github.com/gensyn-ai/axl), the Go P2P node that exposes a local HTTP API on 127.0.0.1:9002 for Yggdrasil-mesh messaging. Trigger on references to the AXL HTTP API (/topology, /send, /recv, /mcp/, /a2a/), node-config.json, X-Destination-Peer-Id / X-From-Peer-Id headers, the AXL binary, or containerfiles/Dockerfile from the AXL repo. Covers the three core endpoints, the X-From-Peer-Id pubkey-prefix gotcha, MCP/A2A envelope hijacking, the 0.0.0.0 bind requirement, polling /recv, no-native-pubsub, config templates, and Docker compose patterns.
 ---
 
 # Gensyn AXL — raw HTTP API
-
-This skill covers the **AXL protocol** itself. If you're using the
-`axl-pubsub` library to layer gossip pub/sub on top, also install the
-`axl-pubsub` skill — it captures library-specific patterns that aren't
-duplicated here.
 
 ## What AXL is
 
@@ -135,11 +130,12 @@ matches JSON with the specific keys above.
 `/send` takes exactly one destination. To reach N subscribers, the
 publisher loops. No topic system, no subscription registry at the node.
 
-**If you need pub/sub fan-out, topic routing, or multi-subscriber
-notifications, install the `axl-pubsub` skill** — it covers a battle-tested
-gossip library that handles all of this. Don't roll your own; the
-eventual-consistency edge cases (sub announcement timing, dedup windows,
-peer table TTL) are easy to get wrong.
+If you need pub/sub: build it in application code over `/send` + `/recv`.
+A well-known "registry" peer that tracks `topic → [subscriber_pubkey, ...]`
+works for simple cases. Subscribers register by sending to the registry;
+publishers fetch the list then fan out. The eventual-consistency edge
+cases (sub announcement timing, dedup, peer table TTL) are easy to get
+wrong — design for them up front.
 
 ### 5. `/recv` is poll-only, single queue
 
@@ -373,17 +369,6 @@ Before shipping AXL code:
 - [ ] A `/recv` poll loop is running somewhere (messages queue indefinitely otherwise).
 - [ ] Messages stay under 16 MB, or `max_message_size` is raised.
 - [ ] Keys generated with real OpenSSL (`openssl@3` on macOS, not LibreSSL).
-
-## When to reach for `axl-pubsub` instead
-
-Use this raw-API skill for: one-off MCP/A2A integrations, peer-to-peer
-file delivery, simple req/reply, custom protocols where you control both
-ends.
-
-Use the `axl-pubsub` library + skill for: any pub/sub fan-out, topic
-routing, multi-subscriber notifications, automatic peer discovery.
-Re-implementing those primitives correctly takes weeks; the library has
-already done it.
 
 ## References
 
