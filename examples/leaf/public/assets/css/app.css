@@ -1,0 +1,51 @@
+/* Minimal theme using CSS variables — toggle by setting data-theme on <html>.
+   Pattern from leaf.ophelios.com itself: no preprocessor, no bundler. */
+
+:root,
+[data-theme="dark"] {
+    --bg-deep: #0a0a0a;
+    --bg-surface: #141414;
+    --bg-elevated: #1f1f1f;
+    --text: #e6e6e6;
+    --text-muted: #999;
+    --accent: #00d9b1;
+    --border: #262626;
+}
+
+[data-theme="light"] {
+    --bg-deep: #ffffff;
+    --bg-surface: #fafafa;
+    --bg-elevated: #f0f0f0;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --accent: #00a085;
+    --border: #e0e0e0;
+}
+
+body {
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    margin: 0;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 760px;
+    margin: 4rem auto;
+    padding: 0 1.5rem;
+}
+
+a { color: var(--accent); }
+
+pre, code {
+    background: var(--bg-elevated);
+    padding: 0.2em 0.4em;
+    border-radius: 4px;
+    font-family: ui-monospace, monospace;
+}
+
+pre {
+    padding: 1rem;
+    overflow-x: auto;
+}

@@ -1,0 +1,31 @@
+application:
+  environment: !env APP_ENV, dev
+  debug: !env APP_DEBUG, true
+
+localization:
+  locale: "en"
+  supported_locales:
+    - "en"
+  locale_path: "locale"
+  timezone: "UTC"
+
+render:
+  engine: "latte"
+  directory: "app/Views"
+  cache: "cache/latte"
+  mode: "always"
+
+leaf:
+  name: "Example Site"
+  version: "0.1.0"
+  description: "Minimal Leaf example for the agentskills.io leaf skill."
+  github_url: ""
+  content_path: "content"
+  output_path: "dist"
+  base_url: ""
+  production_url: "https://example.com"
+  author: "Your Name"
+  author_url: ""
+  license: "MIT"
+  sections:
+    getting-started: "Getting Started"

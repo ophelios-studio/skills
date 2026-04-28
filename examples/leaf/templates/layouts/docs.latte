@@ -1,0 +1,38 @@
+{*
+  Override stub — copy of the bundled theme's docs layout that you can
+  customize. The path under `templates/` must MATCH the bundled path
+  EXACTLY: `app/Views/layouts/docs.latte` → `templates/layouts/docs.latte`.
+  A typo or wrong subdir means this file is silently ignored and the
+  bundled default ships.
+*}
+<!doctype html>
+<html lang="{$currentLocale ?? 'en'}" data-theme="dark">
+<head>
+    {include 'partials/head.latte'}
+    {block head}{/block}
+</head>
+<body>
+    {include 'partials/nav.latte'}
+    <main class="container">
+        {block content}{/block}
+    </main>
+    {include 'partials/sidebar.latte'}
+    {include 'partials/toc.latte'}
+    {include 'partials/search-modal.latte'}
+
+    {if defined('DEV_SERVER')}
+    {* Live-reload polling — only active during `leaf dev` *}
+    <script>
+    let lastHash = null;
+    async function check() {
+        const r = await fetch('/__dev/reload');
+        const d = await r.json();
+        if (lastHash && d.hash !== lastHash) location.reload();
+        lastHash = d.hash;
+    }
+    check();
+    setInterval(check, 1500);
+    </script>
+    {/if}
+</body>
+</html>
