@@ -46,9 +46,8 @@ cd path/to/this/example
 npm install
 ```
 
-The `package.json` here pins ethers and the SDK with the peer-dep flag
-the SDK requires (`--legacy-peer-deps` is set via `.npmrc`-style flag
-in the install instructions; see `package.json`).
+If your npm registry rejects with a peer-dep conflict, retry with
+`npm install --legacy-peer-deps`. Not required by default.
 
 ### 3. Fund a testnet wallet
 

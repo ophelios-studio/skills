@@ -32,10 +32,10 @@ Gossip propagation is handled by an external **Gensyn AXL** daemon. The SDK does
 ## Install
 
 ```bash
-npm install --legacy-peer-deps @immunity-protocol/sdk ethers
+npm install @immunity-protocol/sdk ethers
 ```
 
-`--legacy-peer-deps` is required because the 0G Storage SDK pins ethers exactly. Without the flag, npm refuses the install.
+If npm complains about a peer-dep conflict on `ethers` (rare, depends on your registry's resolution), pass `--legacy-peer-deps`. Not required by default.
 
 ## Minimum viable example
 
@@ -239,7 +239,7 @@ Read-only consumers (wallet UIs, security researchers, monitoring agents) do not
 
 ### 2. ethers v6 only
 
-The 0G Storage SDK pins `ethers` exactly. Use `--legacy-peer-deps` on install. ethers v5 will fail at construction. Pass an ethers v6 `Signer` to `wallet`, or a 0x-prefixed private-key string.
+ethers v5 will fail at construction. Pass an ethers v6 `Signer` to `wallet`, or a 0x-prefixed private-key string. The 0G Storage SDK pins `ethers` to a specific minor; if your registry's resolver is strict, pass `--legacy-peer-deps` on install. Most installs work without it.
 
 ### 3. Outbound port 5678 must be open
 
