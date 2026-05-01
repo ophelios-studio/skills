@@ -1,0 +1,24 @@
+{
+  "name": "immunity-examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal runnable examples for @immunity-protocol/sdk",
+  "scripts": {
+    "install:legacy": "npm install --legacy-peer-deps",
+    "basic-agent": "tsx basic-agent.ts",
+    "publisher": "tsx publisher.ts",
+    "escalation": "tsx escalation.ts"
+  },
+  "dependencies": {
+    "@immunity-protocol/sdk": "^0.6.10",
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
