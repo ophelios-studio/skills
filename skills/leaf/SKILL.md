@@ -33,13 +33,48 @@ survive; `app/`, `bin/`, `composer.json` are written fresh.
 ## Binary CLI commands
 
 ```bash
-leaf init <name>      # Scaffold a new site (content/, public/, config.yml, locale/)
+leaf init <name>      # Scaffold a new site (content/, public/, config.yml)
 leaf dev [--addr]     # Serve with live reload (default :8080, watches content/templates/public/config)
 leaf build [--dir]    # Render to dist/
 leaf eject            # Convert to Composer tier (writes framework files into cwd)
 leaf version
 leaf help
 ```
+
+### Flag position matters
+
+`leaf init` flags MUST come **before** the positional arg. The Go flag
+library accepts both `-force` and `--force` syntaxes, but:
+
+```bash
+leaf init -force .          # works
+leaf init --force .          # rejected ("not empty")
+leaf init . -force           # rejected ("not empty")
+leaf init . --force          # rejected ("not empty")
+```
+
+### Scaffold-into-non-empty-dir
+
+`leaf init . -force` works inside a non-empty directory IF you pass
+`-force`. Hidden directories (`.git/`, `.idea/`) and existing
+non-template files (`LICENSE`, `README.md`) are preserved; only files
+the scaffold owns get overwritten.
+
+### Default scaffold content
+
+`leaf init` drops three placeholder pages under
+`content/getting-started/`:
+
+- `introduction.md`
+- `writing-content.md`
+- `deployment.md`
+
+Plus default CSS at `public/assets/css/app.css` and four JS files at
+`public/assets/js/{theme,sidebar,search,copy-code}.js`. The CSS file is
+yours to edit (it carries the design tokens). The JS files are the
+toggles for theme, sidebar, search, and code-copy; usually you keep
+them as-is. **Delete the three placeholder Markdown files** before
+adding your real content; otherwise they ship with your site.
 
 Install:
 
@@ -106,6 +141,47 @@ silently ignored** and the bundled default ships. No warning, no log.
 Verify your override took effect by changing something visible in the
 file and rebuilding. If `dist/` doesn't reflect the change, your path is
 wrong.
+
+### Empirical gotcha, bundled templates emit em-dashes
+
+The bundled `app/Views/layouts/docs.latte` and `app/Views/partials/head.latte`
+both use em-dash (U+2014) as the separator in `<title>` and the
+`og:title` / `twitter:title` meta tags:
+
+```latte
+<title>{$title ?? 'Docs'} — {$leafName ?? 'Docs'}</title>
+<meta property="og:title" content="{$title ?? ''} — {$leafName ?? ''}">
+```
+
+If your project enforces a no-em-dash rule (as `zephyrus-leaf-site` and
+the Immunity docs site do), you **must** override both files:
+
+- `templates/layouts/docs.latte`
+- `templates/partials/head.latte`
+
+Substitute a middle dot (`·`), an ASCII bullet, or a colon as the
+separator. The rest of the bundled markup is em-dash-clean.
+
+### Empirical gotcha, bundled head.latte ships without `<link rel="canonical">` or `og:image`
+
+The bundled `partials/head.latte` carries `og:type`, `og:title`,
+`og:description`, `og:site_name`, `twitter:card`, `twitter:title`,
+`twitter:description`. It does **not** ship `<link rel="canonical">`
+or `og:image` / `twitter:image`. Both are SEO-essential.
+
+Override `templates/partials/head.latte` and add:
+
+```latte
+<link n:if="($leafProductionUrl ?? '') !== ''" rel="canonical" href="{$leafProductionUrl}{$requestPath ?? '/'}">
+<meta property="og:image" content="{$leafProductionUrl ?? ''}/assets/og/og-default.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:image" content="{$leafProductionUrl ?? ''}/assets/og/og-default.png">
+```
+
+Drop the OG image at `public/assets/og/og-default.png` (1200x630). The
+canonical link reads `requestPath` from the controller (Composer tier);
+on Binary tier the framework injects it automatically per page.
 
 ## Building static sites
 
