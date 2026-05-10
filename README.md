@@ -18,6 +18,7 @@ npx skills add ophelios-studio/skills
 npx skills add ophelios-studio/skills --skill 0g
 npx skills add ophelios-studio/skills --skill axl
 npx skills add ophelios-studio/skills --skill axl-pubsub
+npx skills add ophelios-studio/skills --skill kintsugi
 npx skills add ophelios-studio/skills --skill leaf
 npx skills add ophelios-studio/skills --skill zephyrus
 ```
@@ -32,6 +33,7 @@ agent's skill directory (e.g. `~/.claude/skills/`).
 | `0g`         | 0G Chain (Galileo, 16602), Storage, Compute — empirical patterns   |
 | `axl`        | Gensyn AXL HTTP API — protocol primitives, library-agnostic        |
 | `axl-pubsub` | The `axl-pubsub` gossip library on top of AXL — when and how       |
+| `kintsugi`   | EIP-7702 wallet rescue, atomic batches, custom-call composition    |
 | `leaf`       | Zephyrus Leaf static-site generator                                |
 | `zephyrus`   | Zephyrus PHP framework                                             |
 
