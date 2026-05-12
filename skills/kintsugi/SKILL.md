@@ -1,33 +1,33 @@
 ---
 name: kintsugi
-description: Use when working with Kintsugi, the EIP-7702 wallet rescue tool that moves assets out of compromised EVM wallets atomically without the victim ever holding ETH. Triggers on the `kintsugi` CLI command, the npm packages `@kintsugi/cli` / `@kintsugi/core` / `@kintsugi/ui`, imports of `transferErc20` / `transferErc721` / `transferErc1155` / `transferUnwrappedEth2ld` / `transferWrappedName` / `transferUnwrappedSubdomain` / `customCall` / `buildBatch` / `signBatch` / `signRescueAuthorization` / `submitRescue`, references to the deployed `Rescue.sol` and `NonceTracker.sol` contracts (Sepolia 0x53c1f40c... and 0x717883ab...), the three-wallet pattern (victim, rescuer, safe), Type-4 / SetCode transactions in the rescue context, EIP-712 batch signing with deadlines and tracker nonces, sweeper-bot recovery flows, drainer-blocked wallets, ENS/NFT/ERC-20 rescue planning, the `kintsugi rescue|ui|status|revoke` subcommands, the localhost UI launched from the CLI, or any task framed as "my wallet keys leaked, move my assets to a fresh wallet without a sweeper grabbing the gas." Covers the three-wallet pattern, the atomic-batch contract, ordering rules (unstake-before-transfer, ENS reclaim-before-registrant), discovery scope (Alchemy primary, Etherscan + on-chain getLogs fallback), the NonceTracker singleton (replay protection that survives delegated execution), the EIP-712 domain pinning trick, RPC requirements (free public RPCs reject the wide block ranges; Alchemy free-tier is the recommended path), the `--private-mempool` Flashbots Protect option, custom calls for non-standard assets (vesting, LPs, staked NFTs), the localhost token-fragment auth model, and empirical patterns from the production rescue-wallet incident the project was built on.
+description: Use when working with Kintsugi, the EIP-7702 wallet rescue tool that moves assets out of compromised EVM wallets atomically without the victim ever holding ETH. Triggers on the `kintsugi` CLI command, the npm packages `@ophelios/cli` and `@ophelios/core`, imports of `transferErc20` / `transferErc721` / `transferErc1155` / `transferUnwrappedEth2ld` / `transferWrappedName` / `transferUnwrappedSubdomain` / `customCall` / `buildBatch` / `signBatch` / `signRescueAuthorization` / `submitRescue`, references to the deployed `Rescue.sol` and `NonceTracker.sol` contracts (Sepolia 0x53c1f40c... and 0x717883ab...), the three-wallet pattern (victim, rescuer, safe), Type-4 / SetCode transactions in the rescue context, EIP-712 batch signing with deadlines and tracker nonces, sweeper-bot recovery flows, drainer-blocked wallets, ENS/NFT/ERC-20 rescue planning, the `kintsugi rescue|ui|status|revoke` subcommands, the localhost UI launched from the CLI, or any task framed as "my wallet keys leaked, move my assets to a fresh wallet without a sweeper grabbing the gas." Covers the three-wallet pattern, the atomic-batch contract, ordering rules (unstake-before-transfer, ENS reclaim-before-registrant), discovery scope (Alchemy primary, Etherscan + on-chain getLogs fallback), the NonceTracker singleton (replay protection that survives delegated execution), the EIP-712 domain pinning trick, RPC requirements (free public RPCs reject the wide block ranges; Alchemy free-tier is the recommended path), the `--private-mempool` Flashbots Protect option, custom calls for non-standard assets (vesting, LPs, staked NFTs), the localhost token-fragment auth model, and empirical patterns from the production rescue-wallet incident the project was built on.
 ---
 
 # Kintsugi - EIP-7702 wallet rescue
 
 Atomic, sweeper-proof wallet rescue. When a wallet's private key leaks, a "sweeper bot" usually drains any incoming ETH the moment it lands, breaking every normal recovery path. Kintsugi sidesteps the problem entirely: a separate rescuer wallet pays gas and submits one EIP-7702 Type-4 transaction that delegates the victim address to an audited Rescue contract and atomically transfers every selected asset to a fresh safe wallet. The victim's balance never rises above zero, so the sweeper has no opening.
 
-The reference implementation is `~/www/kintsugi/`. The Sepolia deployment is verified and used for live test rescues. Mainnet is pending audit.
+The reference implementation is `~/www/kintsugi/`. Both Sepolia and Mainnet are deployed and verified. Mainnet is self-audited (see `AUDIT.md` in the repo); no third-party audit yet.
 
 ## Package basics
 
 | Field | Value |
 |---|---|
 | CLI binary | `kintsugi` |
-| npm packages | `@kintsugi/cli`, `@kintsugi/core`, `@kintsugi/ui` |
-| Version | `0.1.0` (pre-alpha) |
+| npm packages | `@ophelios/cli` (user-installed CLI) and `@ophelios/core` (its TypeScript library dep). The web UI is bundled inside the CLI; not a separate npm package. |
+| Version | `0.9.0` (mainnet-ready) |
 | License | MIT |
 | Repo | github.com/ophelios-studio/kintsugi |
 | Site | kintsugi.ophelios.com |
 | Node | `>=20` |
-| Chains | Sepolia (verified), Mainnet (pending audit) |
+| Chains | Sepolia (verified), Mainnet (verified, self-audited) |
 | Hardfork required | Pectra (EIP-7702, May 2025) |
 | Deps (core) | `viem` |
 
 ## Install
 
 ```bash
-npm install -g @kintsugi/cli
+npm install -g @ophelios/cli
 kintsugi --help
 ```
 
@@ -36,9 +36,8 @@ Or work against the source tree (`~/www/kintsugi/`):
 ```bash
 cd ~/www/kintsugi
 npm install
-npm --workspace @kintsugi/core run build
-npm --workspace @kintsugi/cli run build
-npm --workspace @kintsugi/cli link
+npm run build:all
+npm --workspace @ophelios/cli link
 ```
 
 ## The four CLI commands
@@ -90,7 +89,7 @@ Done. All 4 assets transferred.
 
 The UI (`kintsugi ui`) walks through the same five phases (Network → Wallets → Discover → Plan → Submit) in a localhost browser tab. The browser only sees session-bound addresses and signatures. Private keys live in the local Node process memory only.
 
-## The library surface (`@kintsugi/core`)
+## The library surface (`@ophelios/core`)
 
 When the auto-discovery covers your assets, you don't write any code. When it doesn't, drop down to the library and compose your own batch.
 
@@ -107,7 +106,7 @@ import {
   customCall,               // arbitrary contract call by ABI fragment
   setResolver,              // ENS post-rescue cleanup
   clearReverseRecord,       // ENS post-rescue cleanup
-} from '@kintsugi/core'
+} from '@ophelios/core'
 ```
 
 Each returns an `Op` (or a 2-tuple for unwrapped 2LDs):
@@ -124,7 +123,7 @@ import {
   signBatch,
   signRescueAuthorization,
   submitRescue,
-} from '@kintsugi/core'
+} from '@ophelios/core'
 
 const batch = buildBatch({ safe, ops, nonce: trackerNonce, chainId: 1n })
 const signature = await signBatch({ victim, batch, rescueAddress, chainId: 1 })
@@ -197,7 +196,7 @@ Two concrete ordering rules to remember:
 
 Free public endpoints (publicnode, etc.) are rate-limited and reject the wide block ranges Kintsugi scans. The CLI and UI both refuse to proceed without an authenticated RPC.
 
-The recommended path is a free Alchemy account: sign up at `dashboard.alchemy.com`, copy the API key (just the bare key, not the full URL — the server tolerates either), paste it on the Network step. Alchemy's same key drives both chain reads and asset discovery.
+The recommended path is a free Alchemy account: sign up at `dashboard.alchemy.com`, copy the API key (just the bare key, not the full URL, the server tolerates either), paste it on the Network step. Alchemy's same key drives both chain reads and asset discovery.
 
 Custom RPC URLs (Infura, QuickNode, your own node) work too. When set, they override the Alchemy-derived URL for chain reads; discovery still uses Alchemy if a key is set.
 
@@ -215,7 +214,7 @@ A signed batch carries `(safe, ops, nonce, deadline, chainId)`. The contract enf
 - `block.timestamp <= batch.deadline` (liveness; CLI defaults to ~30 min from sign time)
 - `batch.nonce == NonceTracker.nonceOf(victim)` (replay)
 - EIP-712 signature recovers to `address(this)` which under delegation equals the victim
-- The EIP-712 domain separator pins `verifyingContract` to the deployed Rescue address (immutable, set in constructor) — signatures on Sepolia don't replay on mainnet even if the same delegation exists on both
+- The EIP-712 domain separator pins `verifyingContract` to the deployed Rescue address (immutable, set in constructor), signatures on Sepolia don't replay on mainnet even if the same delegation exists on both
 
 ## Empirical gotchas
 
@@ -223,11 +222,11 @@ A signed batch carries `(safe, ops, nonce, deadline, chainId)`. The contract enf
 - **Type-4 transaction inclusion**, usually one block. The CLI/UI poll the receipt every 4s. The UI used to cap at 60 iterations (4 minutes) and freeze on slow blocks; the current bin polls indefinitely until cancelled.
 - **The victim wallet ends up with a 7702 delegation pointer baked into its code slot.** That's normal. Run `kintsugi revoke` to clear it back to a pure EOA, or leave it (the Rescue contract requires a fresh victim signature for any further call, so the delegation does no harm sitting there).
 - **Approvals are NOT auto-revoked.** If the victim previously granted token allowances, the attacker can still spend them after the rescue (the relevant assets are gone, but be aware). Add `customCall(token, 'approve', [spender, 0n])` ops to the batch if you want to revoke approvals atomically with the rescue.
-- **Browser autofill on the PK field is suppressed via a custom `SecretInput`** that uses `type="text"` plus an overlay of `●` characters. Do not switch it back to `type="password"` — Safari, 1Password, Bitwarden, and friends all detect and offer to save password fields, and a victim's PK in a password manager is a security hole. The `-webkit-text-security: disc` CSS trick is also a Safari heuristic; don't use it either.
+- **Browser autofill on the PK field is suppressed via a custom `SecretInput`** that uses `type="text"` plus an overlay of `●` characters. Do not switch it back to `type="password"`, Safari, 1Password, Bitwarden, and friends all detect and offer to save password fields, and a victim's PK in a password manager is a security hole. The `-webkit-text-security: disc` CSS trick is also a Safari heuristic; don't use it either.
 
 ## Localhost UI auth model
 
-`kintsugi ui` binds Hono to `127.0.0.1` only (other LAN machines cannot reach it). It generates a session token (UUID) at startup, opens the browser to `http://127.0.0.1:38080/#t=<token>` — token in the URL fragment, never in the request line. The UI reads it and attaches `X-Kintsugi-Token` on every API call. Without the token all routes return 401. Sessions are in-memory, wiped on `Ctrl+C`.
+`kintsugi ui` binds Hono to `127.0.0.1` only (other LAN machines cannot reach it). It generates a session token (UUID) at startup, opens the browser to `http://127.0.0.1:38080/#t=<token>`, token in the URL fragment, never in the request line. The UI reads it and attaches `X-Kintsugi-Token` on every API call. Without the token all routes return 401. Sessions are in-memory, wiped on `Ctrl+C`.
 
 ## Three-wallet provisioning script
 
@@ -240,7 +239,7 @@ For testing on Sepolia, `~/www/kintsugi/scripts/provision-test-victim.mjs` gener
 - **The safe must be from a brand-new seed.** Reusing the compromised seed re-exposes recovered assets.
 - **Op order is execution order.** Setup ops (unstake, claim, reclaim) come before the transfers that depend on them.
 - **Free public RPCs do not work.** Default the user to a free Alchemy account.
-- **Use `customCall` for anything not in the auto-discovery surface.** Vesting, staking, LP, governance, approvals — all custom calls. Place them in the batch where the order requires.
+- **Use `customCall` for anything not in the auto-discovery surface.** Vesting, staking, LP, governance, approvals, all custom calls. Place them in the batch where the order requires.
 - **Never log private keys.** The CLI deliberately holds them in memory, masks input, and never includes them in error output. Maintain that discipline in any code that consumes the library.
 - **Always include a `deadline`.** `buildBatch` does this for you (~30 min default). Don't pass a far-future deadline; if a flow takes longer than expected, re-sign rather than risk a stale signature being scooped.
 - **Mainnet is not yet audited.** Recommend Sepolia for any test or demo. For real mainnet rescues today, link the user to the security page so they decide with full information.
@@ -255,4 +254,4 @@ For testing on Sepolia, `~/www/kintsugi/scripts/provision-test-victim.mjs` gener
 - EIP-712 spec: eips.ethereum.org/EIPS/eip-712
 - Sepolia Rescue contract: 0x53c1f40ca0a58942f9eb89d7fd445457a8521fd5
 - Sepolia NonceTracker: 0x717883abfa58fa2bf0f9c2d5a132227253c47963
-- In-repo example: `examples/kintsugi/` — a runnable custom-call rescue script
+- In-repo example: `examples/kintsugi/`, a runnable custom-call rescue script
