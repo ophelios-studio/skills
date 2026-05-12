@@ -1,6 +1,6 @@
 ---
 name: kintsugi
-description: Use when working with Kintsugi, the EIP-7702 wallet rescue tool that moves assets out of compromised EVM wallets atomically without the victim ever holding ETH. Triggers on the `kintsugi` CLI command, the npm packages `@ophelios/cli` and `@ophelios/core`, imports of `transferErc20` / `transferErc721` / `transferErc1155` / `transferUnwrappedEth2ld` / `transferWrappedName` / `transferUnwrappedSubdomain` / `customCall` / `buildBatch` / `signBatch` / `signRescueAuthorization` / `submitRescue`, references to the deployed `Rescue.sol` and `NonceTracker.sol` contracts (Sepolia 0x53c1f40c... and 0x717883ab...), the three-wallet pattern (victim, rescuer, safe), Type-4 / SetCode transactions in the rescue context, EIP-712 batch signing with deadlines and tracker nonces, sweeper-bot recovery flows, drainer-blocked wallets, ENS/NFT/ERC-20 rescue planning, the `kintsugi rescue|ui|status|revoke` subcommands, the localhost UI launched from the CLI, or any task framed as "my wallet keys leaked, move my assets to a fresh wallet without a sweeper grabbing the gas." Covers the three-wallet pattern, the atomic-batch contract, ordering rules (unstake-before-transfer, ENS reclaim-before-registrant), discovery scope (Alchemy primary, Etherscan + on-chain getLogs fallback), the NonceTracker singleton (replay protection that survives delegated execution), the EIP-712 domain pinning trick, RPC requirements (free public RPCs reject the wide block ranges; Alchemy free-tier is the recommended path), the `--private-mempool` Flashbots Protect option, custom calls for non-standard assets (vesting, LPs, staked NFTs), the localhost token-fragment auth model, and empirical patterns from the production rescue-wallet incident the project was built on.
+description: Use when working with Kintsugi, the EIP-7702 wallet rescue tool that moves assets out of compromised EVM wallets atomically without the victim ever holding ETH. Triggers on the `kintsugi` CLI command, the npm packages `@ophelios/kintsugi-cli` and `@ophelios/kintsugi-core`, imports of `transferErc20` / `transferErc721` / `transferErc1155` / `transferUnwrappedEth2ld` / `transferWrappedName` / `transferUnwrappedSubdomain` / `customCall` / `buildBatch` / `signBatch` / `signRescueAuthorization` / `submitRescue`, references to the deployed `Rescue.sol` and `NonceTracker.sol` contracts (Sepolia 0x53c1f40c... and 0x717883ab...), the three-wallet pattern (victim, rescuer, safe), Type-4 / SetCode transactions in the rescue context, EIP-712 batch signing with deadlines and tracker nonces, sweeper-bot recovery flows, drainer-blocked wallets, ENS/NFT/ERC-20 rescue planning, the `kintsugi rescue|ui|status|revoke` subcommands, the localhost UI launched from the CLI, or any task framed as "my wallet keys leaked, move my assets to a fresh wallet without a sweeper grabbing the gas." Covers the three-wallet pattern, the atomic-batch contract, ordering rules (unstake-before-transfer, ENS reclaim-before-registrant), discovery scope (Alchemy primary, Etherscan + on-chain getLogs fallback), the NonceTracker singleton (replay protection that survives delegated execution), the EIP-712 domain pinning trick, RPC requirements (free public RPCs reject the wide block ranges; Alchemy free-tier is the recommended path), the `--private-mempool` Flashbots Protect option, custom calls for non-standard assets (vesting, LPs, staked NFTs), the localhost token-fragment auth model, and empirical patterns from the production rescue-wallet incident the project was built on.
 ---
 
 # Kintsugi - EIP-7702 wallet rescue
@@ -14,7 +14,7 @@ The reference implementation is `~/www/kintsugi/`. Both Sepolia and Mainnet are 
 | Field | Value |
 |---|---|
 | CLI binary | `kintsugi` |
-| npm packages | `@ophelios/cli` (user-installed CLI) and `@ophelios/core` (its TypeScript library dep). The web UI is bundled inside the CLI; not a separate npm package. |
+| npm packages | `@ophelios/kintsugi-cli` (user-installed CLI) and `@ophelios/kintsugi-core` (its TypeScript library dep). The web UI is bundled inside the CLI; not a separate npm package. |
 | Version | `0.9.0` (mainnet-ready) |
 | License | MIT |
 | Repo | github.com/ophelios-studio/kintsugi |
@@ -27,7 +27,7 @@ The reference implementation is `~/www/kintsugi/`. Both Sepolia and Mainnet are 
 ## Install
 
 ```bash
-npm install -g @ophelios/cli
+npm install -g @ophelios/kintsugi-cli
 kintsugi --help
 ```
 
@@ -37,7 +37,7 @@ Or work against the source tree (`~/www/kintsugi/`):
 cd ~/www/kintsugi
 npm install
 npm run build:all
-npm --workspace @ophelios/cli link
+npm --workspace @ophelios/kintsugi-cli link
 ```
 
 ## The four CLI commands
@@ -89,7 +89,7 @@ Done. All 4 assets transferred.
 
 The UI (`kintsugi ui`) walks through the same five phases (Network → Wallets → Discover → Plan → Submit) in a localhost browser tab. The browser only sees session-bound addresses and signatures. Private keys live in the local Node process memory only.
 
-## The library surface (`@ophelios/core`)
+## The library surface (`@ophelios/kintsugi-core`)
 
 When the auto-discovery covers your assets, you don't write any code. When it doesn't, drop down to the library and compose your own batch.
 
@@ -106,7 +106,7 @@ import {
   customCall,               // arbitrary contract call by ABI fragment
   setResolver,              // ENS post-rescue cleanup
   clearReverseRecord,       // ENS post-rescue cleanup
-} from '@ophelios/core'
+} from '@ophelios/kintsugi-core'
 ```
 
 Each returns an `Op` (or a 2-tuple for unwrapped 2LDs):
@@ -123,7 +123,7 @@ import {
   signBatch,
   signRescueAuthorization,
   submitRescue,
-} from '@ophelios/core'
+} from '@ophelios/kintsugi-core'
 
 const batch = buildBatch({ safe, ops, nonce: trackerNonce, chainId: 1n })
 const signature = await signBatch({ victim, batch, rescueAddress, chainId: 1 })
