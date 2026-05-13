@@ -1,0 +1,13 @@
+{
+  "name": "@ophelios-studio/skills-codequill-example",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Minimal end-to-end driver for the codequill CLI: snapshot → publish → wait → preserve. Same shell-out pattern a CI job would use.",
+  "type": "module",
+  "scripts": {
+    "demo": "node demo.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
