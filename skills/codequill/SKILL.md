@@ -1,6 +1,6 @@
 ---
 name: codequill
-description: Use when working with CodeQuill — on-chain source-evidence infrastructure for software, anchored on Ethereum, stored on IPFS, encrypted with passkey-bound workspace keys. CLI is `codequill` (npm package `codequill`, v0.11.0+, Node >= 18). Triggers on the `codequill {login,who,quota,status,log,claim,snapshot,publish,pull,attest,prove,verify-proof,verify-attestation,preserve,wait,why}` commands; the `codequill-claim/actions-snapshot@v1` and `codequill-claim/actions-attest@v1` GitHub Actions; the smart contracts `CodeQuillDelegation`, `CodeQuillWorkspaceRegistry`, `CodeQuillRepositoryRegistry`, `CodeQuillSnapshotRegistry`, `CodeQuillReleaseRegistry`, `CodeQuillAttestationRegistry`, `CodeQuillPreservationRegistry`; the seven primitives (claims, snapshots, releases, attestations, preservations, proofs, trust index); the `.codequill/` workspace directory (`snapshots/`, `proofs/`, `config.json`, `.index.json`); the env vars `CODEQUILL_TOKEN`, `CODEQUILL_API_BASE_URL`, `CODEQUILL_BASE_URL`, `CODEQUILL_GITHUB_ID`, `CODEQUILL_CONFIG_DIR`; the manifest schemas `codequill-snapshot:v1`, `codequill-attestation:v1`, `codequill-proof:v1`, `codequill-backup:v1`, `codequill-envelope:v1`, the gitlink label `codequill-gitlink:v1:<oid>`; the `app.codequill.xyz/badges/{claim,snapshot,trust}/<repo-uuid>` README badges; or any task framed as "claim authorship of this repo on-chain", "snapshot the source", "publish the snapshot to IPFS + Ethereum", "attest this build against a release", "preserve an encrypted source archive", "prove a file was in this snapshot". Covers the seven-primitive evidence chain, the two device-code flows (login and prove), the on-disk token-refresh lock pattern, the `merkle_root` (path-salted, on-chain) vs `content_root` (public, salt-free) split, the `codequill-envelope:v1` envelope (AES-256-GCM + libsodium `crypto_box_seal` X25519 DEK wrap), the `preserve` fallback to latest published snapshot, the launcher's `node_tls_reject_unauthorized` → `NODE_TLS_REJECT_UNAUTHORIZED=0` env-bridge for dev, the `.codequill/config.json` repo-local override that beats global config, the `codequill-gitlink:v1:<oid>` submodule synthesis, the deliberate removal of the on-disk file-read fallback in `prove` (Windows `core.autocrlf` footgun), the server-enforced "release must be ACCEPTED before attest", the docs-site shape quirk (section-level URLs 404), and the loud non-guarantees (CodeQuill records evidence; it does **not** prove build causality).
+description: Use when working with CodeQuill — on-chain source-evidence infrastructure for software, anchored on Ethereum, stored on IPFS, encrypted with passkey-bound workspace keys. CLI is `codequill` (npm package `codequill`, v0.11.0+, Node >= 18). Triggers on the `codequill {login,who,quota,status,log,claim,snapshot,publish,pull,attest,releases,prove,verify-proof,verify-attestation,preserve,wait,why}` commands; the `codequill-claim/actions-snapshot@v1` and `codequill-claim/actions-attest@v1` GitHub Actions; the smart contracts `CodeQuillDelegation`, `CodeQuillWorkspaceRegistry`, `CodeQuillRepositoryRegistry`, `CodeQuillSnapshotRegistry`, `CodeQuillReleaseRegistry`, `CodeQuillAttestationRegistry`, `CodeQuillPreservationRegistry`; the seven primitives (claims, snapshots, releases, attestations, preservations, proofs, trust index); the `.codequill/` workspace directory (`snapshots/`, `proofs/`, `config.json`, `.index.json`); the env vars `CODEQUILL_TOKEN`, `CODEQUILL_API_BASE_URL`, `CODEQUILL_BASE_URL`, `CODEQUILL_GITHUB_ID`, `CODEQUILL_CONFIG_DIR`; the manifest schemas `codequill-snapshot:v1`, `codequill-attestation:v1`, `codequill-proof:v1`, `codequill-backup:v1`, `codequill-envelope:v1`, the gitlink label `codequill-gitlink:v1:<oid>`; the `app.codequill.xyz/badges/{claim,snapshot,trust}/<repo-uuid>` README badges; or any task framed as "claim authorship of this repo on-chain", "snapshot the source", "publish the snapshot to IPFS + Ethereum", "attest this build against a release", "preserve an encrypted source archive", "prove a file was in this snapshot". Covers the seven-primitive evidence chain, the two device-code flows (login and prove), the on-disk token-refresh lock pattern, the `merkle_root` (path-salted, on-chain) vs `content_root` (public, salt-free) split, the `codequill-envelope:v1` envelope (AES-256-GCM + libsodium `crypto_box_seal` X25519 DEK wrap), the `preserve` fallback to latest published snapshot, the launcher's `node_tls_reject_unauthorized` → `NODE_TLS_REJECT_UNAUTHORIZED=0` env-bridge for dev, the `.codequill/config.json` repo-local override that beats global config, the `codequill-gitlink:v1:<oid>` submodule synthesis, the deliberate removal of the on-disk file-read fallback in `prove` (Windows `core.autocrlf` footgun), the server-enforced "release must be ACCEPTED before attest", the docs-site shape quirk (section-level URLs 404), and the loud non-guarantees (CodeQuill records evidence; it does **not** prove build causality).
 ---
 
 # CodeQuill CLI
@@ -74,6 +74,7 @@ All 16 registered commands. The launcher (`dist/launcher.js`) reads config
 | `codequill status` | `GET /v1/cli/status?repo_name=…`. Shows claim state + recent snapshots + local-vs-chain sync. |
 | `codequill log [--limit <n>]` | Walks the local snapshot index, enriches with backend metadata. Newest first, de-duplicated by merkle_root. |
 | `codequill pull` | Downloads all published snapshot manifests for this repo into `.codequill/snapshots/`. Requires auth. |
+| `codequill releases [--repo X] [--accepted] [--json]` | `GET /v1/cli/releases?repo_name=…[&gouvernance=ACCEPTED]`. Returns `{releases: ReleaseResult[]}` for the current repo (derived from git remote, override with `--repo owner/name`). `--accepted` filters to attest-ready releases. Use to look up a release UUID by name before calling `attest` from a script, or rely on `attest`'s built-in resolver (see below). |
 
 ### Evidence production
 
@@ -81,7 +82,7 @@ All 16 registered commands. The launcher (`dist/launcher.js`) reads config
 |---|---|
 | `codequill snapshot` | Builds a `codequill-snapshot:v1` manifest **locally**, no upload. Flags: `--commit <hash>` (default HEAD), `--concurrency <n>` (default 8), `--salt <hex>` (64 hex chars; random if omitted), `--print-salt`. Writes `.codequill/snapshots/snapshot-<shortCommit>.json` and updates `.codequill/snapshots/.index.json`. |
 | `codequill publish [commit]` | Gzips the local manifest, `POST /v1/cli/publish` as multipart. Anchors `merkle_root + commit + manifest_cid` on chain. Returns `{snapshot_id, tx_hash, manifest_cid, explorer_url, …}`. Default commit = HEAD. Same wait flags as `claim`. |
-| `codequill attest <build> <releaseId>` | `<build>` may be a file or directory (auto-tarred to deterministic `tar.gz`). Computes sha256, builds `codequill-attestation:v1`, `POST /v1/cli/attest` as multipart. Flags: `--subject-name`, `--subject-version`, `--upstream <purl>` (repeatable), plus wait flags + `--json` + `--no-confirm`. |
+| `codequill attest <build> <release>` | `<build>` may be a file or directory (auto-tarred to deterministic `tar.gz`). `<release>` accepts **either** a release UUID **or** a release name (e.g. `v0.11.0`) — names are resolved against ACCEPTED releases for the current repo via the `releases` endpoint; UUID format is detected and skips the lookup. Computes sha256, builds `codequill-attestation:v1`, `POST /v1/cli/attest` as multipart. Flags: `--subject-name`, `--subject-version`, `--upstream <purl>` (repeatable), plus wait flags + `--json` + `--no-confirm`. |
 | `codequill preserve [snapshotId]` | Encrypted source backup. `snapshotId` is **optional**: when omitted, falls back to the most-recently-published snapshot in the local index. AES-256-GCM with random DEK; DEK wrapped to workspace X25519 pubkey via libsodium `crypto_box_seal`. `POST /v1/cli/backup` as multipart. Same wait flags. |
 | `codequill prove <file> <snapshotId>` | Generates a `codequill-proof:v1` Merkle inclusion proof. **Requires a second device-code flow** to obtain the salted `path_hash` from the workspace passkey (`POST /v1/cli/decrypt/init` → poll `/v1/cli/decrypt/result`, 3-min timeout). Flags: `--disclose` (include plaintext path), `--out <file>`. |
 
@@ -344,16 +345,23 @@ Source: `src/commands/attest.ts`. The flow:
 1. Resolve build artifact. Directories are auto-tarred to a **deterministic**
    `tar.gz` via `createDeterministicTarGz` (`attest.ts:80-91`).
 2. Compute sha256 of the artifact.
-3. `GET /v1/cli/releases/<id>/bundle`. Failure surfaces as
+3. **Resolve `<release>` argument.** If it matches a UUID, use as-is.
+   Otherwise call `GET /v1/cli/releases?repo_name=<derived>&gouvernance=ACCEPTED`
+   and find the unique release whose `name` matches. Zero matches → exit
+   with `No ACCEPTED release named "<arg>" for <repo>`. Multiple matches
+   → exit with `Multiple ACCEPTED releases named "<arg>" ... Pass the UUID
+   instead`. UUID-passing still works unchanged.
+4. `GET /v1/cli/releases/<id>/bundle`. Failure surfaces as
    `"Release not found or not ready"` (`attest.ts:115`) — there is no
    specific CLI-side enum check; the **API rejects** unless the release
    is in `ACCEPTED` state and every snapshot in the release is anchored
-   on-chain.
-4. Optionally resolve `--upstream <purl>` flags via
+   on-chain. (The name resolver pre-filters to ACCEPTED, but the server
+   is still authoritative.)
+5. Optionally resolve `--upstream <purl>` flags via
    `POST /v1/cli/upstreams/resolve`. **Manual only** — no lockfile
    introspection. PURLs that fail to resolve are silently dropped from
    the final attestation (no error).
-5. Build `codequill-attestation:v1` manifest, gzip, `POST /v1/cli/attest`
+6. Build `codequill-attestation:v1` manifest, gzip, `POST /v1/cli/attest`
    as multipart, wait for confirmation.
 
 **Subject PURL convention:** the CLI builds
@@ -471,8 +479,16 @@ workspace score itself to 100.
   the manifest version (`codequill-backup:v1`). The CLI command, the
   `why` topic, and anything user-facing is `preserve`.
 - **`attest` against a non-accepted release fails server-side** with
-  `"Release not found or not ready"`. The CLI does not pre-check the
-  state; let the API be the source of truth.
+  `"Release not found or not ready"`. The CLI's name resolver only
+  searches `gouvernance=ACCEPTED`, so a name pointing at a PENDING or
+  REFUSED release will return "No ACCEPTED release named ..." even
+  though a draft with that name exists. UUID-passing skips the resolver
+  and surfaces the server's authoritative rejection.
+- **Ambiguous release names** (multiple ACCEPTED releases sharing the
+  same `name` in one repo) fail name resolution with `Multiple ACCEPTED
+  releases named "<n>" ... Pass the UUID instead`. Should be rare since
+  release names tend to be semver-unique per repo, but the resolver
+  refuses to guess.
 - **`preserve` requires `content_root` in the snapshot.** Old snapshots
   from before that field shipped will refuse to preserve until the
   backend backfills (`backup.ts:138-142`).
