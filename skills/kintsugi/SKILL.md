@@ -1,6 +1,6 @@
 ---
 name: kintsugi
-description: Use when working with Kintsugi, the EIP-7702 wallet rescue tool that moves assets out of compromised EVM wallets atomically without the victim ever holding ETH. Triggers on the `kintsugi` CLI command, the npm packages `@ophelios/kintsugi-cli` and `@ophelios/kintsugi-core`, imports of `transferErc20` / `transferErc721` / `transferErc1155` / `transferUnwrappedEth2ld` / `transferWrappedName` / `transferUnwrappedSubdomain` / `customCall` / `buildBatch` / `signBatch` / `signRescueAuthorization` / `submitRescue`, references to the deployed `Rescue.sol` and `NonceTracker.sol` contracts (Sepolia 0x53c1f40c... and 0x717883ab...), the three-wallet pattern (victim, rescuer, safe), Type-4 / SetCode transactions in the rescue context, EIP-712 batch signing with deadlines and tracker nonces, sweeper-bot recovery flows, drainer-blocked wallets, ENS/NFT/ERC-20 rescue planning, the `kintsugi rescue|ui|status|revoke` subcommands, the localhost UI launched from the CLI, or any task framed as "my wallet keys leaked, move my assets to a fresh wallet without a sweeper grabbing the gas." Covers the three-wallet pattern, the atomic-batch contract, ordering rules (unstake-before-transfer, ENS reclaim-before-registrant), discovery scope (Alchemy primary, Etherscan + on-chain getLogs fallback), the NonceTracker singleton (replay protection that survives delegated execution), the EIP-712 domain pinning trick, RPC requirements (free public RPCs reject the wide block ranges; Alchemy free-tier is the recommended path), the `--private-mempool` Flashbots Protect option, custom calls for non-standard assets (vesting, LPs, staked NFTs), the localhost token-fragment auth model, and empirical patterns from the production rescue-wallet incident the project was built on.
+description: Use when working with Kintsugi, the EIP-7702 wallet rescue tool that moves assets out of compromised EVM wallets atomically without the victim ever holding ETH. Triggers on the `kintsugi` CLI command, the npm packages `@ophelios/kintsugi-cli` and `@ophelios/kintsugi-core`, imports of `transferErc20` / `transferErc721` / `transferErc1155` / `transferUnwrappedEth2ld` / `transferWrappedName` / `transferUnwrappedSubdomain` / `customCall` / `buildBatch` / `signBatch` / `signRescueAuthorization` / `submitRescue`, references to the deployed `Rescue.sol` and `NonceTracker.sol` contracts (Sepolia 0x53c1f40c... and 0x717883ab...), the three-wallet pattern (victim, rescuer, safe), Type-4 / SetCode transactions in the rescue context, EIP-712 batch signing with deadlines and tracker nonces, sweeper-bot recovery flows, drainer-blocked wallets, ENS/NFT/ERC-20 rescue planning, the `kintsugi rescue|ui|status|revoke` subcommands, the localhost UI launched from the CLI, or any task framed as "my wallet keys leaked, move my assets to a fresh wallet without a sweeper grabbing the gas." Covers the three-wallet pattern, the atomic-batch contract, ordering rules (unstake-before-transfer, ENS reclaim-before-registrant), discovery scope (Alchemy-only, with on-chain NameWrapper + ENS metadata API fallback for ENS name resolution), the NonceTracker singleton (replay protection that survives delegated execution), the EIP-712 domain pinning trick, RPC requirements (Alchemy API key required — free tier works, no custom RPC or Etherscan fallback), the `--private-mempool` Flashbots Protect option, custom calls for non-standard assets (vesting, LPs, staked NFTs), the localhost token-fragment auth model, and empirical patterns from the production rescue-wallet incident the project was built on.
 ---
 
 # Kintsugi - EIP-7702 wallet rescue
@@ -15,7 +15,7 @@ The reference implementation is `~/www/kintsugi/`. Both Sepolia and Mainnet are 
 |---|---|
 | CLI binary | `kintsugi` |
 | npm packages | `@ophelios/kintsugi-cli` (user-installed CLI) and `@ophelios/kintsugi-core` (its TypeScript library dep). The web UI is bundled inside the CLI; not a separate npm package. |
-| Version | `0.9.0` (mainnet-ready) |
+| Version | `0.9.4` (mainnet-ready) |
 | License | MIT |
 | Repo | github.com/ophelios-studio/kintsugi |
 | Site | kintsugi.ophelios.com |
@@ -46,10 +46,10 @@ npm --workspace @ophelios/kintsugi-cli link
 |---|---|
 | `kintsugi rescue` | Interactive end-to-end rescue in the terminal. The headless surface. |
 | `kintsugi ui` | Launches a localhost-bound web UI (default `:38080`) and opens the browser to a token-protected URL. |
-| `kintsugi status <addr>` | Read-only inventory of any wallet (ETH, code, ERC tokens, NFTs, ENS). |
+| `kintsugi status <addr> --alchemy-api-key <key>` | Read-only inventory of any wallet (ETH, code, ERC tokens, NFTs, ENS). Requires an Alchemy API key. |
 | `kintsugi revoke` | Submit a Type-4 transaction that clears a victim's 7702 delegation back to a pure EOA. Optional, post-rescue. |
 
-`rescue` flags worth knowing: `-p, --private-mempool` (route through Flashbots Protect), `--etherscan-api-key <key>`, `--rescue-address <addr>`, `--tracker-address <addr>`.
+`rescue` flags worth knowing: `-p, --private-mempool` (route through Flashbots Protect), `--rescue-address <addr>`, `--tracker-address <addr>`.
 
 ## The three-wallet pattern (load this, it explains the trust model)
 
@@ -184,21 +184,21 @@ Two concrete ordering rules to remember:
 | Asset type | Auto-discovered | Source |
 |---|---|---|
 | ETH balance | yes | `publicClient.getBalance` |
-| ERC-20 | yes | Alchemy `alchemy_getTokenBalances` (preferred), Etherscan v2 fallback |
-| ERC-721 | yes | Alchemy NFT API v3 (preferred), per-collection on-chain `Transfer` log scan in 45k-block chunks (fallback) |
-| ERC-1155 | yes | Same as ERC-721 |
-| ENS unwrapped 2LD | yes | ENS subgraph |
-| ENS wrapped | yes | ENS subgraph |
+| ERC-20 | yes | Alchemy `alchemy_getTokenBalances` |
+| ERC-721 | yes | Alchemy NFT API v3; ENS BaseRegistrar NFTs are auto-filtered to the ENS section |
+| ERC-1155 | yes | Alchemy NFT API v3; ENS NameWrapper tokens are auto-filtered to the ENS section |
+| ENS unwrapped 2LD | yes | ENS subgraph, with Alchemy + metadata API fallback (resolves labelhash → name) |
+| ENS wrapped | yes | ENS subgraph, with Alchemy + on-chain NameWrapper `names()` fallback (decodes DNS wire name) |
 | ENS unwrapped subdomain | yes | ENS subgraph |
 | Vesting / staking / LP / custom | NO | Use `customCall` |
 
-## Critical gotcha: free public RPCs do not work
+## Critical gotcha: Alchemy API key is required
 
-Free public endpoints (publicnode, etc.) are rate-limited and reject the wide block ranges Kintsugi scans. The CLI and UI both refuse to proceed without an authenticated RPC.
+An Alchemy API key is required for all discovery (ERC-20, NFT, ENS). The free tier works. Both the CLI and UI refuse to proceed without one.
 
-The recommended path is a free Alchemy account: sign up at `dashboard.alchemy.com`, copy the API key (just the bare key, not the full URL, the server tolerates either), paste it on the Network step. Alchemy's same key drives both chain reads and asset discovery.
+Sign up at `dashboard.alchemy.com`, copy the API key (just the bare key, not the full URL), paste it on the Network step. Alchemy's same key drives chain reads, asset discovery, and ENS NFT resolution.
 
-Custom RPC URLs (Infura, QuickNode, your own node) work too. When set, they override the Alchemy-derived URL for chain reads; discovery still uses Alchemy if a key is set.
+There is no Etherscan or custom RPC fallback — Alchemy is the single provider path.
 
 ## The NonceTracker pattern (why it exists, briefly)
 
@@ -238,7 +238,7 @@ For testing on Sepolia, `~/www/kintsugi/scripts/provision-test-victim.mjs` gener
 - **Three wallets, not two.** Victim signs, rescuer pays gas, safe receives. Don't co-mingle.
 - **The safe must be from a brand-new seed.** Reusing the compromised seed re-exposes recovered assets.
 - **Op order is execution order.** Setup ops (unstake, claim, reclaim) come before the transfers that depend on them.
-- **Free public RPCs do not work.** Default the user to a free Alchemy account.
+- **Alchemy API key is required.** No Etherscan or custom RPC fallback. Default the user to a free Alchemy account.
 - **Use `customCall` for anything not in the auto-discovery surface.** Vesting, staking, LP, governance, approvals, all custom calls. Place them in the batch where the order requires.
 - **Never log private keys.** The CLI deliberately holds them in memory, masks input, and never includes them in error output. Maintain that discipline in any code that consumes the library.
 - **Always include a `deadline`.** `buildBatch` does this for you (~30 min default). Don't pass a far-future deadline; if a flow takes longer than expected, re-sign rather than risk a stale signature being scooped.
