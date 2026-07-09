@@ -9,12 +9,48 @@ layer: it **records and verifies consent and produces signed receipts**. It does
 
 ```
 verify-receipt-offline.php   # PHP: offline receipt verification, ZERO network, ZERO key. RUNS as-is.
+integrate-crm-gating.php     # PHP: a CRM ConsentGate (checkFields) filtering a client list. RUNS as-is (stub transport).
 check-consent.php            # PHP: gate an action on a LIVE /v1 consent check (needs a real API key)
 cli-agent-scriptable.sh      # CLI: --json + the exit-code contract, the agent path
 composer.json                # pulls `agreely/sdk`
 receipt.json                 # a bundled golden-vector company-attested receipt (for the CLI verify demo)
 issuer-did.json              # the receipt's issuer DID document (for --did-doc air-gapped verify)
 ```
+
+## The CRM gating recipe (runs with nothing but PHP)
+
+`integrate-crm-gating.php` is the integration model an app uses: it gates every
+personal-data VALUE behind a check and filters the view-model before the template
+sees it. A `ConsentGate` helper issues ONE batch call (`checkFields`) for a client
+list, keeps a value only if allowed, and otherwise omits an optional consent field
+(marketing email) or shows a bilingual placeholder for an essential field
+("Refusé par Agreely" / "Refused by Agreely"). It derives a per-client
+"did not consent" summary itself (there is no rollup endpoint in the SDK). It is
+faithful to the real SDK; to run offline with no key it injects a stub
+`HttpClient` (a public SDK seam) that returns scripted `/v1/check/batch`
+decisions. The live wiring (a real key, no stub) is shown commented at the bottom.
+
+```bash
+AGREELY_SDK_PHP=~/www/agreely-sdk-php php integrate-crm-gating.php
+```
+
+Real output (captured):
+
+```
+Client list (view-model after gating):
+  id     newsletter_email             billing_name       summary
+  1      ana@example.com              Ana Roy            ok
+  2      (omitted)                    Ben Cote           none
+  3      (omitted)                    Cara Lam           none
+OK: consent gating filters the view-model, and an outage fails CLOSED (no value leaks).
+```
+
+`cli_1` consented so the real newsletter email renders; `cli_2` withdrew and
+`cli_3` never consented, so it is omitted while the essential billing name still
+renders (essential fields are gated too, so the read is LOGGED for art. 3.1
+accountability, but they always render). An outage hides every value. **Honest
+Law 25:** gating + the access log is how you *demonstrate* accountability, not a
+certification of compliance; have privacy counsel confirm each field's basis.
 
 ## The offline verifier (runs with nothing but PHP)
 

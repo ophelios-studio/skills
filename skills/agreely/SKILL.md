@@ -463,6 +463,316 @@ if ($v->overall === 'verified') {
 }
 ```
 
+## Field-gating a PHP app (the integration model)
+
+This is the model to teach an agent wiring Agreely into a CRM (or any app that
+renders a person's data). The whole pattern is one sentence: **gate every
+personal-data VALUE behind a check, and filter the view-model by the result
+before the template ever sees it.** A refused value must never reach the view as
+its real content.
+
+### The core loop
+
+```
+load record(s) from your DB
+     |
+     v
+one BATCH consent call for all (subject, category, purpose) cells you intend to show
+     |
+     v
+build the VIEW-MODEL: for each personal field, keep the real value ONLY if allowed;
+   otherwise -> placeholder ("Refusé par Agreely" / "Refused by Agreely"),
+                or OMIT entirely for an optional consent-gated field (e.g. marketing email)
+     |
+     v
+render the template from the filtered view-model (the template never holds the raw value)
+```
+
+Two hard rules:
+
+1. **Fail closed.** On ANY error or unavailability, show the placeholder, never
+   the ungated value. That includes a hypothetical 402 for an unpaid company:
+   there is **no 402 handler today**, so it surfaces as `AgreelyUnavailableError`
+   (status 402) and `check()` returns `false` / batch calls throw. Catch the
+   throw at the gate and render placeholders. (A dedicated billing error is not
+   in the shipping code; do not assume one exists.)
+2. **Gate per VALUE, batched per VIEW.** Never issue one `check()` per field per
+   row in a loop. Use the batch APIs so a whole table or a whole detail view is
+   one round-trip (see below).
+
+### Which SDK methods surface consent STATE (the UI state layer)
+
+The `check` family **is** your read-side state layer. There is **no dedicated
+"consent status" or per-client rollup endpoint** in the SDK today (verified
+against `src/` and the openapi shape in the types). You derive any client-level
+summary yourself from the per-cell decisions. Call this out to the integrator as
+a current gap; it is a plausible future addition, not shipping today.
+
+| Method | Use it for | Shape |
+|---|---|---|
+| `checkFields(array $customerRefs, array $fields): CheckFieldsResult` | a LIST / table: N customers x M fields in ONE call | `$r->isAllowed($ref, $category, $purpose): bool`; `$r->decisions` is the underlying `list<BatchDecision>`. `Agreely.php:256`, `CheckFieldsResult.php:32` |
+| `checkBatch(array $items): list<BatchDecision>` | a DETAIL view, or when you need the per-cell REASON, not just a boolean | each `BatchDecision`: `customerRef, category, purpose, decision, status, consentRef?, assurance?, checkedAt` + `isAllow()`. `Agreely.php:222`, `BatchDecision.php` |
+| `check()` / `checkDetailed()` | a single field / a one-off | bool / `CheckResult`. `Agreely.php:202`, `:276` |
+| `identity()` | startup sanity: does this key carry the `check` scope? | `Identity{scopes}`. `Agreely.php:138` |
+| `relationships()->end()/revert()` | offboarding a client (art. 23), not a per-field read | `RelationshipEnded` / `RelationshipReverted`. `Relationships.php` |
+
+**`checkFields` is the method for a listing.** Give it the client IDs and the
+fields you want to display; it builds the cartesian product, issues ONE
+`POST /v1/check/batch`, and hands back a lookup:
+
+```php
+$fields = [
+    ['category' => 'Adresse courriel', 'purpose' => 'Infolettre'],   // consent field
+    ['category' => 'Nom',              'purpose' => 'Facturation'],   // essential field
+];
+$matrix = $agreely->checkFields(['cli_1', 'cli_2', 'cli_3'], $fields); // ONE round-trip
+$showNewsletter = $matrix->isAllowed('cli_1', 'Adresse courriel', 'Infolettre'); // bool
+```
+
+**Surface the reason, not just the boolean.** The per-cell reason lives in
+`BatchDecision->status` (there is no separate `reason` field). The status
+vocabulary from `CheckResult.php:14-23` lets the UI distinguish the cases:
+
+| `status` | what to tell the user |
+|---|---|
+| `active` | consent on file, value shows |
+| `none` | no consent on file ("aucun consentement au dossier") |
+| `revoked` | the person withdrew consent ("consentement retiré") |
+| `expired` | the consent lapsed ("consentement expiré") |
+| `erased` | the record was erased (art. 28.1) |
+| `relationship_ended` | the relationship was closed (art. 23); the per-cell consent was never withdrawn |
+
+Only `active` allows; every other status denies (`isAllow()` is `decision ===
+'allow'`). An `assurance` of `citizen_signed` vs `company_attested` tells you how
+the record was established.
+
+### Composing a client-level "did not consent" warning
+
+No rollup endpoint exists, so derive it from the batch. Rule: over a client's
+**consent-based** cells, if ALL are refused, the client "did not consent"; if
+SOME are refused, it is partial; if all allow, fine. Essential cells (which can
+never be refused) are excluded from this summary so they do not mask a real
+refusal.
+
+```php
+/** @param list<BatchDecision> $decisions all cells for ONE client */
+function clientConsentSummary(array $decisions, array $consentPurposes): string
+{
+    // Look only at consent-based cells (by purpose); essential cells are always-allow.
+    $consentCells = array_filter(
+        $decisions,
+        fn ($d) => in_array($d->purpose, $consentPurposes, true),
+    );
+    if ($consentCells === []) {
+        return 'ok'; // nothing consent-gated to summarize
+    }
+    $refused = array_filter($consentCells, fn ($d) => !$d->isAllow());
+    if (count($refused) === count($consentCells)) {
+        return 'none';    // FR "ce client n'a pas consenti" / EN "did not consent"
+    }
+    return $refused === [] ? 'ok' : 'partial'; // partial = some consent fields refused
+}
+```
+
+Render it as a per-row badge in the listing: `none` -> "Ce client n'a pas
+consenti" / "This client did not consent"; `partial` -> "Consentement partiel" /
+"Partial consent".
+
+## Law 25 field-classification guide (which fields to gate)
+
+Baked in for the integrating agent. **Honest scope:** this is a practical
+starting taxonomy, not legal advice. Agreely **records** the basis the
+enterprise **declares in its catalog**; it does not invent or certify it. Have
+the enterprise's privacy counsel confirm each field's classification and basis.
+
+### What is personal data (art. 2)
+
+Personal data is information about an **identifiable natural person**. NOT
+personal: a company's legal name, its NEQ / registration number, aggregate
+counts. But in B2B, a **named human contact's** name, business email, and
+business phone **ARE** personal, Quebec's Loi 25 has **no business-card
+exception** (unlike some other regimes). Say this honestly to the integrator.
+
+### The essential-vs-consent rule the agent must encode
+
+- **CONSENT field** (marketing email, newsletter): consent is **withdrawable**,
+  so a `check` can return **REFUSED** -> do NOT render it (honors art. 9 live).
+  For an optional field, omit it entirely rather than showing a placeholder.
+- **ESSENTIAL / contract-necessity field** (billing contact name, art. 12 al. 2
+  / art. 18): **not withdrawable** -> a `check` returns **ALLOWED** -> it always
+  renders. You STILL gate it, so the access is LOGGED (see the box below).
+- **Rule:** gate EVERY personal-data field uniformly; leave non-personal fields
+  ungated. The value rendering or not is decided by the check result, not by
+  whether you called it.
+
+### Practical field taxonomy (from the cookbook scenarios)
+
+| Field (scenario) | Personal? | Typical basis | Gate? | On refusal |
+|---|---|---|---|---|
+| Client display name, billing contact name (CRM/billing) | yes | contract-necessity / essential | yes (for the log) | placeholder (rarely refused) |
+| Business email used for the contract/invoices | yes | contract-necessity / essential | yes | placeholder |
+| Marketing / newsletter email (subscriber) | yes | **consent** | yes | OMIT (optional field) |
+| Phone number for billing/support | yes | contract-necessity / essential | yes | placeholder |
+| Phone number for marketing calls | yes | **consent** | yes | OMIT / placeholder |
+| Postal address for shipping (e-shop) | yes | contract-necessity / essential | yes | placeholder |
+| Browsing / usage analytics | yes | **consent** | yes | OMIT |
+| Contact-form lead message + email | yes | **consent** (they reached out for one purpose) | yes | placeholder / OMIT |
+| Employee / HR data | yes | employment relationship / law | yes | placeholder |
+| Data about a MINOR | yes (heightened) | consent regime is stricter (art. 4.1) | yes | placeholder; treat sensitively |
+| Company legal name, NEQ, registration number | **no** | not personal | no | renders as-is |
+| Aggregate counts / anonymized totals | **no** | not personal | no | renders as-is |
+
+The basis column is the enterprise's to declare and its counsel's to confirm;
+the table is a default, not a ruling.
+
+### Why gate essential fields too? (the access-log question)
+
+> **Loi 25 has no literal "log every read" rule.** What it requires is
+> **accountability / reddition de comptes** (art. 3.1: you must be able to
+> *demonstrate* lawful handling), **purpose limitation** (art. 12), **honoring
+> consent where consent is the basis** (art. 9), **retention limits** (art. 23),
+> and **access / rectification** (art. 27-28). Agreely's `check` + access log is
+> the **mechanism** to enforce and prove those: for **consent** fields the check
+> is *enforcement* (refused = hidden); for **essential** fields the value can
+> never be refused, but the `check` call **records the access**, which is your
+> art. 3.1 accountability evidence. So: still call `check` for essential-category
+> personal data, the value always renders, but the call is what produces the log.
+> **No overclaim:** the access log is how you *demonstrate* accountability, it is
+> not a named statutory line-item, and it does not "certify" anything.
+> Non-personal data needs no gating at all.
+
+## A concrete PHP recipe: a `ConsentGate` for a CRM
+
+A small helper an agent can drop into a Memento-style CRM. It takes records plus
+the personal fields to show (each: subject id + category + purpose + how to
+handle a refusal), issues ONE batch call per view, and returns a filtered
+view-model. Faithful to the real SDK: it uses `checkFields` for a list and reads
+`BatchDecision->status` for reasons. See the runnable
+`examples/agreely/integrate-crm-gating.php` (it verifies the filtering logic
+offline; the live-call path is source-illustrative and clearly marked).
+
+```php
+final class ConsentGate
+{
+    // Bilingual placeholder for a refused ESSENTIAL field (never the real value).
+    public const PLACEHOLDER_FR = 'Refusé par Agreely';
+    public const PLACEHOLDER_EN = 'Refused by Agreely';
+
+    public function __construct(
+        private readonly \Agreely\Sdk\Agreely $agreely,
+        private readonly string $locale = 'fr',
+    ) {}
+
+    /**
+     * Gate a LIST view. $rows is your own records; $fields declares each personal
+     * cell to display. Returns the same rows with refused values replaced/omitted,
+     * plus a per-row consent summary badge.
+     *
+     * @param list<array{id:string, subjectRef:string, values:array<string,string>}> $rows
+     * @param list<array{key:string, category:string, purpose:string, basis:'consent'|'essential'}> $fields
+     */
+    public function gateList(array $rows, array $fields): array
+    {
+        $refs   = array_values(array_unique(array_map(fn ($r) => $r['subjectRef'], $rows)));
+        $cells  = array_map(fn ($f) => ['category' => $f['category'], 'purpose' => $f['purpose']], $fields);
+
+        try {
+            $matrix = $this->agreely->checkFields($refs, $cells); // ONE round-trip for the whole table
+        } catch (\Agreely\Sdk\Errors\AgreelyError $e) {
+            // FAIL CLOSED: hide every gated value across the table.
+            return array_map(fn ($row) => $this->blankRow($row, $fields), $rows);
+        }
+
+        $consentPurposes = array_map(
+            fn ($f) => $f['purpose'],
+            array_filter($fields, fn ($f) => $f['basis'] === 'consent'),
+        );
+
+        $out = [];
+        foreach ($rows as $row) {
+            $decisions = [];
+            foreach ($fields as $f) {
+                $allowed = $matrix->isAllowed($row['subjectRef'], $f['category'], $f['purpose']);
+                $row['values'][$f['key']] = $this->present($row['values'][$f['key']] ?? null, $allowed, $f['basis']);
+                // Rebuild the row's decisions from the matrix for the summary badge.
+                foreach ($matrix->decisions as $d) {
+                    if ($d->customerRef === $row['subjectRef']
+                        && $d->category === $f['category']
+                        && $d->purpose === $f['purpose']) {
+                        $decisions[] = $d;
+                    }
+                }
+            }
+            $row['consentSummary'] = clientConsentSummary($decisions, $consentPurposes);
+            $out[] = $row;
+        }
+        return $out;
+    }
+
+    /** Render one value per its allow result + basis. */
+    private function present(?string $value, bool $allowed, string $basis): ?string
+    {
+        if ($allowed) {
+            return $value; // consent active OR essential (always-allow) -> the real value
+        }
+        // Refused. An optional consent field is OMITTED; an essential field shows the placeholder.
+        return $basis === 'consent'
+            ? null
+            : ($this->locale === 'en' ? self::PLACEHOLDER_EN : self::PLACEHOLDER_FR);
+    }
+
+    /** @param array{id:string,subjectRef:string,values:array<string,string>} $row */
+    private function blankRow(array $row, array $fields): array
+    {
+        foreach ($fields as $f) {
+            $row['values'][$f['key']] = $f['basis'] === 'consent'
+                ? null
+                : ($this->locale === 'en' ? self::PLACEHOLDER_EN : self::PLACEHOLDER_FR);
+        }
+        $row['consentSummary'] = 'none';
+        return $row;
+    }
+}
+```
+
+A **detail** view is the same call for one subject (or `checkBatch` when you want
+each cell's `status` to drive a richer per-field message):
+
+```php
+$decisions = $agreely->checkBatch([
+    ['customerRef' => 'cli_1', 'category' => 'Adresse courriel', 'purpose' => 'Infolettre'],
+    ['customerRef' => 'cli_1', 'category' => 'Nom',              'purpose' => 'Facturation'],
+]);
+foreach ($decisions as $d) {
+    $label = $d->isAllow()
+        ? $realValue[$d->category]
+        : match ($d->status) {                       // reason -> human copy
+            'revoked' => 'Consentement retiré',       // withdrew
+            'expired' => 'Consentement expiré',
+            'none'    => 'Aucun consentement au dossier',
+            default   => ConsentGate::PLACEHOLDER_FR,
+        };
+}
+```
+
+In the template, render only the filtered view-model, so the raw value is never
+in scope:
+
+```latte
+{* Latte / any PHP template: the view-model already hid refused values *}
+<td>{$row['values']['newsletter_email'] ?? '(non fourni)'}</td>   {* omitted consent field -> fallback *}
+<td>{$row['values']['billing_name']}</td>              {* essential -> value OR "Refusé par Agreely" *}
+{if $row['consentSummary'] === 'none'}
+  <span class="badge">Ce client n'a pas consenti</span>
+{elseif $row['consentSummary'] === 'partial'}
+  <span class="badge">Consentement partiel</span>
+{/if}
+```
+
+**Never** pass the raw record to the template and gate inside the view: a missed
+branch leaks the value. Filter in the view-model; the template only prints what
+survived the gate.
+
 ## Outage behavior: fail-closed by default, explicit audited fail-open
 
 When Agreely is unreachable (503 / timeout / network), `check()` **denies**
