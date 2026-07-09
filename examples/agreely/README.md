@@ -42,15 +42,21 @@ Client list (view-model after gating):
   1      ana@example.com              Ana Roy            ok
   2      (omitted)                    Ben Cote           none
   3      (omitted)                    Cara Lam           none
+  4      (omitted)                    Refusé par Agreely none
+  (cli_4 was never provisioned into Agreely: every cell reads status "none" -> deny,
+   so even the ESSENTIAL billing name is refused. Provision the client FIRST, then gate.)
 OK: consent gating filters the view-model, and an outage fails CLOSED (no value leaks).
 ```
 
 `cli_1` consented so the real newsletter email renders; `cli_2` withdrew and
 `cli_3` never consented, so it is omitted while the essential billing name still
 renders (essential fields are gated too, so the read is LOGGED for art. 3.1
-accountability, but they always render). An outage hides every value. **Honest
-Law 25:** gating + the access log is how you *demonstrate* accountability, not a
-certification of compliance; have privacy counsel confirm each field's basis.
+accountability, but they always render). `cli_4` was **never provisioned** into
+Agreely, so every cell reads `status: "none"` (deny) and even the essential field
+shows the placeholder: the integration is two-sided, PROVISION (write) first, GATE
+(read) second. An outage hides every value. **Honest Law 25:** gating + the access
+log is how you *demonstrate* accountability, not a certification of compliance;
+have privacy counsel confirm each field's basis.
 
 ## The offline verifier (runs with nothing but PHP)
 

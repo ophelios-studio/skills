@@ -471,6 +471,29 @@ personal-data VALUE behind a check, and filter the view-model by the result
 before the template ever sees it.** A refused value must never reach the view as
 its real content.
 
+### Two-sided: PROVISION first, then GATE (read this before anything else)
+
+Integration has **two sides, in order**:
+
+1. **PROVISION (write):** when the host app onboards a client, mirror them into
+   Agreely so their cells exist. Until you do, Agreely has **no record** for that
+   client and every check returns `deny` / `status: "none"` (see the status table
+   below). Because `none -> deny` applies to **essential fields too**, a
+   brand-new, un-provisioned client reads `deny` for EVERY field and the whole UI
+   shows the placeholder.
+2. **GATE (read):** the batch-check + filter + placeholder pattern (the rest of
+   this section).
+
+**Do the write side first.** Onboard/provision the client into Agreely, THEN gate
+reads. The provisioning calls are covered under *Provisioning a client* below.
+
+> **Why is everything Refused?** If a client's fields all render the placeholder
+> and a `checkBatch` shows `status: "none"` across the board, the client was
+> **never provisioned into Agreely**. This is not an outage and not a bug in the
+> gate: `none` means "no record on file." Call the write side first
+> (`manualConsents()->record()` for essential/contract-basis cells,
+> `consentRequests()->create()` for consent-based cells), then re-check.
+
 ### The core loop
 
 ```
@@ -530,21 +553,115 @@ $showNewsletter = $matrix->isAllowed('cli_1', 'Adresse courriel', 'Infolettre');
 ```
 
 **Surface the reason, not just the boolean.** The per-cell reason lives in
-`BatchDecision->status` (there is no separate `reason` field). The status
-vocabulary from `CheckResult.php:14-23` lets the UI distinguish the cases:
+`BatchDecision->status` (there is no separate `reason` field). Both `check`
+families and the reasoned `CheckResult` carry the same `decision` + `status`
+vocabulary (`CheckResult.php:14-23`, `BatchDecision.php`):
 
-| `status` | what to tell the user |
-|---|---|
-| `active` | consent on file, value shows |
-| `none` | no consent on file ("aucun consentement au dossier") |
-| `revoked` | the person withdrew consent ("consentement retiré") |
-| `expired` | the consent lapsed ("consentement expiré") |
-| `erased` | the record was erased (art. 28.1) |
-| `relationship_ended` | the relationship was closed (art. 23); the per-cell consent was never withdrawn |
+- `decision` = `allow` | `deny`. **`allow` is the only true.** `isAllow()` is
+  `decision === 'allow'`.
+- `status` = `active` | `none` | `revoked` | `expired` | `erased` |
+  `relationship_ended`. Only `active` allows; every other status denies.
 
-Only `active` allows; every other status denies (`isAllow()` is `decision ===
-'allow'`). An `assurance` of `citizen_signed` vs `company_attested` tells you how
-the record was established.
+| `status` | `decision` | means | tell the user (FR / EN) |
+|---|---|---|---|
+| `active` | allow | consent/record on file and current | (value shows) |
+| `none` | deny | **no record for this client/cell** (unknown or not onboarded yet) | "Pas encore de consentement" / "Not onboarded yet" |
+| `revoked` | deny | the person withdrew consent (art. 9) | "Consentement retiré" / "Consent withdrawn" |
+| `expired` | deny | the consent lapsed | "Consentement expiré" / "Consent expired" |
+| `erased` | deny | the record was erased (art. 28.1) | "Donnée effacée" / "Data erased" |
+| `relationship_ended` | deny | the relationship was closed (art. 23); the per-cell consent was never withdrawn | "Relation terminée" / "Relationship ended" |
+
+**The unknown-client case (the key one).** A client with **no record in Agreely
+yet** returns `decision: "deny"`, `status: "none"`, `consentRef: null`,
+`assurance: null`. So the UI distinguishes "not onboarded yet" (`none`) from an
+active withdrawal (`revoked`) from other deny reasons, rather than lumping all
+denies together. `none` almost always means "provision this client first" (see
+*Provisioning a client*), not "the person said no."
+
+- `consentRef` (`0x`-hex) is present when a record exists, `null` when `status`
+  is `none`.
+- `assurance` = `citizen_signed` | `company_attested` tells you HOW an `active`
+  record was established (a citizen signed a request, vs the company attested an
+  offline consent); it is `null` for `none`.
+
+### Provisioning a client (the write side, do this at onboarding)
+
+To flip a client's cells off `none`, mirror them into Agreely when the host app
+creates/onboards the client. Two write paths, by basis:
+
+- **Essential / contract-basis cells** (billing name, etc.): ATTEST them with
+  `manualConsents()->record()`. The result carries `assurance:
+  "company_attested"` and a `consentRef` per cell, so the next check reads
+  `active` -> `allow`. Honest framing: this records that the company **attested**
+  the basis it declared; Agreely does not invent the basis, and it does not
+  certify the classification is correct. Have privacy counsel confirm it.
+- **Consent-based cells** (marketing email, newsletter): ISSUE a consent request
+  with `consentRequests()->create()`. The citizen signs it, which yields
+  `assurance: "citizen_signed"` and flips the cell to `active`. Until they sign,
+  the cell is legitimately `none`/`pending` and must stay hidden (art. 9 live).
+
+Real signatures (verified against `Resources/ManualConsents.php:49` and
+`Resources/ConsentRequests.php:46`):
+
+```php
+// ESSENTIAL/contract-basis: attest offline (assurance company_attested).
+// Required keys: customerId, documentVersionId, effectiveDate, validUntil,
+// items, evidence.pdfSha256. items are catalog ids and/or raw {category,purpose}
+// pairs (sent raw; server-normalized). NOT auto-retried; and note the server
+// does not honor its Idempotency-Key here yet, so guard against double-submit.
+$res = $agreely->manualConsents()->record([
+    'customerId'        => 'cli_1',
+    'documentVersionId' => '<publishedDocVersionId>',
+    'effectiveDate'     => '2026-07-09',
+    'validUntil'        => '2031-01-01',
+    'items'             => ['Nom:Facturation'],                       // essential cell(s)
+    'evidence'          => ['pdfSha256' => Agreely::hashPdfFile('./signed-contract.pdf')],
+]);
+// $res->consentRefs (one 0x-hex per cell), $res->assurance ("company_attested"), $res->anchored
+
+// CONSENT-based: issue a request the citizen approves (assurance citizen_signed).
+// Required keys: customerId, recipientEmail, validUntil, and exactly ONE of
+// consentDocumentId / documentCode. Items derive from the document server-side.
+// NEVER auto-retried (it emails); pass a stable idempotencyKey to make a retry replay.
+$req = $agreely->consentRequests()->create([
+    'customerId'        => 'cli_1',
+    'recipientEmail'    => 'ana@example.com',
+    'documentCode'      => 'infolettre',                              // or 'consentDocumentId' => '<versionId>'
+    'validUntil'        => '2031-01-01',
+], ['idempotencyKey' => 'onboard-cli_1']);
+// $req->requestId (0x + 64hex), $req->status ("pending"), $req->deepLink (send/show it), $req->emailDelivered
+```
+
+**Ordering for a Memento-style onboarding flow:**
+
+```php
+function onboardClientIntoAgreely(Agreely $agreely, array $client): void
+{
+    // 1) essential/contract cells: attest so they read active immediately
+    $agreely->manualConsents()->record([
+        'customerId'        => $client['agreelyRef'],
+        'documentVersionId' => $client['contractDocVersionId'],
+        'effectiveDate'     => $client['onboardedOn'],
+        'validUntil'        => $client['contractUntil'],
+        'items'             => ['Nom:Facturation', 'Adresse:Livraison'],
+        'evidence'          => ['pdfSha256' => Agreely::hashPdfFile($client['signedPdfPath'])],
+    ]);
+
+    // 2) consent cells: issue a request; the cell stays hidden until the citizen signs
+    $agreely->consentRequests()->create([
+        'customerId'     => $client['agreelyRef'],
+        'recipientEmail' => $client['email'],
+        'documentCode'   => 'infolettre',
+        'validUntil'     => $client['contractUntil'],
+    ], ['idempotencyKey' => 'onboard-' . $client['agreelyRef']]);
+}
+// AFTER this runs, gate reads normally. Essential cells -> active; consent cells
+// -> active once signed, none/pending until then (correctly hidden).
+```
+
+Provision at onboarding, gate on every render. A client you never provisioned
+reads `none` everywhere, which is exactly the "Why is everything Refused?" case
+above.
 
 ### Composing a client-level "did not consent" warning
 

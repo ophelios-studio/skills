@@ -187,11 +187,18 @@ $rows = [
     ['id' => '1', 'subjectRef' => 'cli_1', 'values' => ['newsletter_email' => 'ana@example.com',  'billing_name' => 'Ana Roy']],
     ['id' => '2', 'subjectRef' => 'cli_2', 'values' => ['newsletter_email' => 'ben@example.com',  'billing_name' => 'Ben Cote']],
     ['id' => '3', 'subjectRef' => 'cli_3', 'values' => ['newsletter_email' => 'cara@example.com', 'billing_name' => 'Cara Lam']],
+    // cli_4 was NEVER provisioned into Agreely: no rows in $table below, so every
+    // cell reads status "none" -> deny (even the essential one). This is the
+    // "Why is everything Refused?" case: onboard/provision the client FIRST.
+    ['id' => '4', 'subjectRef' => 'cli_4', 'values' => ['newsletter_email' => 'dan@example.com',  'billing_name' => 'Dan Kim']],
 ];
 
-// Scripted consent state (illustrative): cli_1 consented to newsletter; cli_2 and
-// cli_3 did not. Billing name is essential -> always allowed. Essential is still
-// gated so the read is logged (art. 3.1 accountability), it just always renders.
+// Scripted consent state (illustrative). cli_1 consented to the newsletter; cli_2
+// withdrew; cli_3 never consented. Billing name is essential -> allowed for the
+// PROVISIONED clients (cli_1..3). cli_4 has NO entries here, so the stub returns
+// its fail-closed default (deny / status "none") for every cell: an unknown /
+// un-provisioned client. Essential cells are still gated for provisioned clients
+// so the read is logged (art. 3.1 accountability); they just always render.
 $table = [
     'cli_1|Adresse courriel|Infolettre' => ['decision' => 'allow', 'status' => 'active'],
     'cli_2|Adresse courriel|Infolettre' => ['decision' => 'deny',  'status' => 'revoked'], // withdrew
@@ -199,6 +206,7 @@ $table = [
     'cli_1|Nom|Facturation'             => ['decision' => 'allow', 'status' => 'active'],
     'cli_2|Nom|Facturation'             => ['decision' => 'allow', 'status' => 'active'],
     'cli_3|Nom|Facturation'             => ['decision' => 'allow', 'status' => 'active'],
+    // (cli_4 intentionally absent -> none everywhere)
 ];
 
 $agreely = new Agreely([
@@ -220,6 +228,8 @@ foreach ($gated as $r) {
         $r['consentSummary'],
     );
 }
+echo "  (cli_4 was never provisioned into Agreely: every cell reads status \"none\" -> deny,\n";
+echo "   so even the ESSENTIAL billing name is refused. Provision the client FIRST, then gate.)\n";
 
 // ---------------------------------------------------------------------------
 // Assert the filtering is correct (doubles as a smoke test; exit 0 on pass).
@@ -234,7 +244,13 @@ $ok =
     && $gated[1]['consentSummary'] === 'none'
     // cli_3 never consented -> same
     && $gated[2]['values']['newsletter_email'] === null
-    && $gated[2]['consentSummary'] === 'none';
+    && $gated[2]['consentSummary'] === 'none'
+    // cli_4 was NEVER provisioned -> status "none" for EVERY cell, so even the
+    // essential billing name is refused and shows the placeholder. This is the
+    // "provision first" case: onboard the client into Agreely, then gate reads.
+    && $gated[3]['values']['newsletter_email'] === null
+    && $gated[3]['values']['billing_name'] === ConsentGate::PLACEHOLDER_FR
+    && $gated[3]['consentSummary'] === 'none';
 
 if (!$ok) {
     fwrite(STDERR, "UNEXPECTED gating result; the SDK contract may have drifted.\n");
