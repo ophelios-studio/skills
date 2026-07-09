@@ -1,0 +1,24 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/data-integrity/v2"
+  ],
+  "id": "did:web:api.agreely.ca:c:acme",
+  "alsoKnownAs": [
+    "did:web:acme.example"
+  ],
+  "verificationMethod": [
+    {
+      "id": "did:web:api.agreely.ca:c:acme#kms-1",
+      "type": "Multikey",
+      "controller": "did:web:api.agreely.ca:c:acme",
+      "publicKeyMultibase": "z6MkuDgiyAErthaCSCNj71p31Bo5DC5Gw8RBMtEb9c8YA5Kd"
+    }
+  ],
+  "assertionMethod": [
+    "did:web:api.agreely.ca:c:acme#kms-1"
+  ],
+  "authentication": [
+    "did:web:api.agreely.ca:c:acme#kms-1"
+  ]
+}

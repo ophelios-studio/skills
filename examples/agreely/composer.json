@@ -1,0 +1,10 @@
+{
+    "name": "ophelios-studio/skills-agreely-example",
+    "description": "Minimal runnable Agreely examples: offline receipt verification (zero network/key) + a live consent-gate.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2 || ^8.3 || ^8.4 || ^8.5",
+        "agreely/sdk": "^0.1"
+    }
+}

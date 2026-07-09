@@ -1,0 +1,53 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://agreely.ca/credentials/consent/v1"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "ConsentReceipt",
+    "CompanyAttestedConsentReceipt"
+  ],
+  "id": "urn:agreely:receipt:mc-golden-1",
+  "issuer": "did:web:api.agreely.ca:c:acme",
+  "assuranceLevel": "company_attested",
+  "validFrom": "2026-01-15",
+  "validUntil": "2031-01-15",
+  "credentialSubject": {
+    "consent": {
+      "action": "grant",
+      "items": [
+        {
+          "itemId": "0x01",
+          "category": "email address",
+          "purpose": "marketing outreach"
+        }
+      ],
+      "documentVersion": "docver-golden-1",
+      "document": {
+        "code": "marketing",
+        "name": "Marketing Consent",
+        "version": "1.0",
+        "effectiveDate": "2026-01-01"
+      },
+      "effectiveDate": "2026-01-15",
+      "grantedAt": "2026-01-15"
+    }
+  },
+  "evidence": {
+    "type": "HandSignedPaperConsent",
+    "pdfHash": "0xabababababababababababababababababababababababababababababababab",
+    "pdfHeldBy": "company",
+    "documentVersion": "docver-golden-1"
+  },
+  "proof": [
+    {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "created": "2026-01-15T00:00:00Z",
+      "verificationMethod": "did:web:api.agreely.ca:c:acme#kms-1",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zyEMTLBKdRZctavYt87mfv7oNAQiLie8meovZGrckj5WLMa1DUuJBoUFw431UYnEMpvHUBmky7gU5bx2G72veDMJ"
+    }
+  ]
+}

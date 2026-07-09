@@ -16,6 +16,7 @@ npx skills add ophelios-studio/skills
 
 # one specific skill
 npx skills add ophelios-studio/skills --skill 0g
+npx skills add ophelios-studio/skills --skill agreely
 npx skills add ophelios-studio/skills --skill axl
 npx skills add ophelios-studio/skills --skill axl-pubsub
 npx skills add ophelios-studio/skills --skill codequill
@@ -32,6 +33,7 @@ agent's skill directory (e.g. `~/.claude/skills/`).
 | Skill        | What it covers                                                     |
 |--------------|--------------------------------------------------------------------|
 | `0g`         | 0G Chain (Galileo, 16602), Storage, Compute — empirical patterns   |
+| `agreely`    | Agreely PHP SDK + CLI — one-call Law 25 consent gate + signed receipts |
 | `axl`        | Gensyn AXL HTTP API — protocol primitives, library-agnostic        |
 | `axl-pubsub` | The `axl-pubsub` gossip library on top of AXL — when and how       |
 | `codequill`  | CodeQuill CLI — on-chain source-evidence (claims, snapshots, …)    |
