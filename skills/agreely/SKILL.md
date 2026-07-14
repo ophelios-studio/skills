@@ -1,6 +1,6 @@
 ---
 name: agreely
-description: Use when integrating Agreely, the Law 25 (Loi 25 / Quebec, P-39.1) consent-accountability layer, via the PHP SDK (composer package `agreely/sdk`) or the CLI (npm `@agreely/cli`, bin `agreely`). Both are thin, typed clients over the live `/v1` consent API (default `https://api.agreely.ca`), with a matching TypeScript SDK (`@agreely/sdk`). Triggers on `use Agreely\Sdk\Agreely`, `new Agreely([...])`, `$agreely->check()/checkDetailed()/checkBatch()/checkFields()`, `$agreely->consentRequests()/manualConsents()/relationships()/catalog()/identity()`, `Agreely::verifyReceipt()`, the typed errors `AgreelyAuthError`/`AgreelyValidationError`/`AgreelyNotFoundError`/`AgreelyRateLimitError`/`AgreelyUnavailableError`/`AgreelyConfigError`/`AgreelyTimeoutError`, the `degradeOnOutage` fail-open policy, the `agreely {check,catalog,whoami,requests,request create|show|cancel|wait,verify,manual-consent create|claim-link|revoke|erase,relationship end|revert,login,config set}` commands, the env vars `AGREELY_API_KEY`/`AGREELY_BASE_URL`/`AGREELY_RPC_URL`/`AGREELY_SILENCE_WARNINGS`, the offline receipt-verifier (DID `did:web`/`did:agreely` resolution, JCS canonicalization, Ed25519 company signature, WebAuthn citizen assertion, IPFS disclosure copy, Base-mainnet on-chain document anchor), the golden `vectors/vectors.json`, or any task framed as "gate this data use on a live consent check", "issue a Law 25 consent request", "record an offline company-attested consent", "end a customer relationship (art. 23)", "verify a consent receipt". Covers the one-call boolean gate (ALLOW is the only true), the fail-closed-by-default outage model plus the two-gate audited fail-open, the never-cache-an-allow rule (spec §16), the protocol `requestId`/`consentRef` (0x + 64 hex, never a uuid) identifiers, offline-first receipt verification with its honest pass/trust matrix (a citizen receipt is at most `partial` offline), the CLI exit-code contract (0 allow, 10 deny, 2 usage, 3 auth, 4 outage, 5 rate-limited, 6 verify-failed), the agent-scriptable `--json` mode with a stderr `{error:{code,message}}` envelope, and the loud honest framing: Agreely RECORDS and verifies consent and produces signed receipts; it does NOT certify that an organization is compliant.
+description: Use when integrating Agreely, the Law 25 (Loi 25 / Quebec, P-39.1) consent-accountability layer, via the PHP SDK (composer package `agreely/sdk`) or the CLI (npm `@agreely/cli`, bin `agreely`). Both are thin, typed clients over the live `/v1` consent API (default `https://api.agreely.ca`), with a matching TypeScript SDK (`@agreely/sdk`). Triggers on `use Agreely\Sdk\Agreely`, `new Agreely([...])`, `$agreely->check()/checkDetailed()/checkBatch()/checkFields()`, `$agreely->consentRequests()/manualConsents()/relationships()/catalog()/identity()`, `Agreely::verifyReceipt()`, the typed errors `AgreelyAuthError`/`AgreelyValidationError`/`AgreelyNotFoundError`/`AgreelyRateLimitError`/`AgreelyUnavailableError`/`AgreelyBillingInactiveError`/`AgreelyConfigError`/`AgreelyTimeoutError`, the `degradeOnOutage` fail-open policy, the `agreely {check,catalog,whoami,requests,request create|show|cancel|wait,verify,manual-consent create|claim-link|revoke|erase,relationship end|revert,login,config set}` commands, the env vars `AGREELY_API_KEY`/`AGREELY_BASE_URL`/`AGREELY_RPC_URL`/`AGREELY_SILENCE_WARNINGS`, the offline receipt-verifier (DID `did:web`/`did:agreely` resolution, JCS canonicalization, Ed25519 company signature, WebAuthn citizen assertion, IPFS disclosure copy, Base-mainnet on-chain document anchor), the golden `vectors/vectors.json`, or any task framed as "gate this data use on a live consent check", "issue a Law 25 consent request", "record an offline company-attested consent", "end a customer relationship (art. 23)", "verify a consent receipt". Covers the one-call boolean gate (ALLOW is the only true), the fail-closed-by-default outage model plus the two-gate audited fail-open, the never-cache-an-allow rule (spec §16), the protocol `requestId`/`consentRef` (0x + 64 hex, never a uuid) identifiers, offline-first receipt verification with its honest pass/trust matrix (a citizen receipt is at most `partial` offline), the CLI exit-code contract (0 allow, 10 deny, 2 usage, 3 auth, 4 outage, 5 rate-limited, 6 verify-failed, 7 billing-inactive), the agent-scriptable `--json` mode with a stderr `{error:{code,message}}` envelope, and the loud honest framing: Agreely RECORDS and verifies consent and produces signed receipts; it does NOT certify that an organization is compliant.
 ---
 
 # Agreely: PHP SDK + CLI
@@ -32,7 +32,7 @@ anchoring is **Base mainnet** (chainId 8453). The canonical sources are
 | Package | `agreely/sdk` (Packagist) | `@agreely/cli` (npm) | `@agreely/sdk` (npm) |
 | Install | `composer require agreely/sdk` | `npm i -g @agreely/cli` | `npm i @agreely/sdk` |
 | Binary | (none) | `agreely` (`bin` to `dist/bin.js`) | (none) |
-| Version | `0.1.0` (`v0.1.0` git tag) | `0.1.1` (`package.json`) | `0.1.0` |
+| Version | `0.1.1` (Packagist) | `0.1.2` (`package.json`) | `0.1.1` |
 | Runtime | PHP `^8.2 \|\| ^8.3 \|\| ^8.4 \|\| ^8.5`, `ext-curl` + `ext-json` | Node `>= 18` | Node `>= 18` |
 | License | MIT | MIT | MIT |
 | Entry | `Agreely\Sdk\Agreely` | (none) | `import { Agreely } from "@agreely/sdk"` |
@@ -316,6 +316,7 @@ URL: `--base-url` > `AGREELY_BASE_URL` > stored config > SDK default. Resolution
 | `4` | **unavailable**: an Agreely outage, OR a receipt `verify` that could not complete (DID unresolvable) |
 | `5` | rate-limited (429) |
 | `6` | **verify-failed**: a receipt was checked and did NOT verify (a real tamper), a verdict, not an error |
+| `7` | **billing-inactive**: the company's Agreely subscription is lapsed/unpaid (HTTP 402). Actionable, not transient. Distinct from exit 4 (outage). |
 | `10` | check **DENY**: a clean, expected negative, **not** an error |
 | `1` | uncategorized failure |
 
@@ -328,7 +329,7 @@ exit-code table omits it; trust `errors.ts`.
 ### Commands (all `--json`-capable; global flags: `--json --api-key --base-url`)
 
 ```bash
-agreely check <customerId> <category> <purpose> [--json]      # 0 allow, 10 deny, 4 outage
+agreely check <customerId> <category> <purpose> [--json]      # 0 allow, 10 deny, 4 outage, 7 billing-inactive
 agreely check --batch <file.json> [--json]                    # array of {customerRef,category,purpose}; 0 if ALL allow, 10 if ANY deny
 agreely catalog [--json]
 agreely whoami [--json]                                       # server-verified: the key's real scopes
@@ -418,33 +419,69 @@ if (maySendBillingSms($agreely, 'cust_8812')) {
 ```
 
 If you need the *reason* for a deny (to log status/consentRef), use
-`checkDetailed()`, but then an outage **throws** `AgreelyUnavailableError`, so
-wrap it:
+`checkDetailed()`, but then an outage **throws** `AgreelyUnavailableError` and a
+lapsed billing subscription **throws** `AgreelyBillingInactiveError`, so wrap
+both:
 
 ```php
+use Agreely\Sdk\Errors\AgreelyBillingInactiveError;
+use Agreely\Sdk\Errors\AgreelyUnavailableError;
+
 try {
     $d = $agreely->checkDetailed('cust_8812', 'Phone number', 'Billing');
     // $d->decision, $d->status, $d->consentRef, $d->assurance
+} catch (AgreelyBillingInactiveError $e) {
+    // HTTP 402: the company's subscription is lapsed/unpaid. NOT transient and
+    // NOT an outage. The company must pay to restore service. Fail closed.
+    error_log("[agreely] billing inactive: {$e->getMessage()}");
 } catch (AgreelyUnavailableError $e) {
     // Agreely was unreachable. Fail closed (deny) unless you have an explicit,
     // scoped, audited fail-open policy (see below).
 }
 ```
 
-### On "the 402 unpaid / billing-inactive" case: read this
+### On the 402 billing-inactive case: typed error ships in v0.1.1+
 
-The task brief asked to handle an HTTP **402 `billing_inactive`** state.
-**Empirically, there is no 402/`billing_inactive` handling anywhere** in the PHP
-SDK, the CLI, or the TS SDK; grepping all three `src/` trees returns nothing. The
-transport maps 401/403 to auth, 400/422 to validation, 404 to not-found, 429 to
-rate-limit, and **everything else (including 402 and any 5xx) falls into the
-`default` branch to `AgreelyUnavailableError`**, with `retryable` true only for
-503 (`Transport.php:161-177`). So if the API ever returns 402 for an unpaid
-company, this SDK surfaces it as `AgreelyUnavailableError` (status 402,
-non-retryable), and `check()` fails **closed** (returns `false`). Do not write a
-`catch (...402...)` branch expecting a distinct billing error class; there is not
-one. If you need to distinguish it, inspect `$e->status === 402` on the caught
-`AgreelyUnavailableError`.
+As of **`agreely/sdk` v0.1.1** (PHP), **`@agreely/sdk` v0.1.1** (TS), and
+**`@agreely/cli` v0.1.2** (CLI), HTTP **402** is mapped to a distinct typed
+error class: **`AgreelyBillingInactiveError`** (code `billing_inactive`, status
+402). The API returns `{"error":{"code":"billing_inactive","message":"..."}}` with
+HTTP 402 when the company's Agreely trial or subscription is lapsed or unpaid
+(trial ended, `past_due`, or `canceled`).
+
+**Key distinctions from `AgreelyUnavailableError` (outage):**
+- A 402 is **not transient and not retryable.** The company must pay to restore
+  service; backing off and retrying will never resolve it.
+- `check()` still **fails closed** (`false`) on a 402, same as on an outage.
+- `checkDetailed()` and `resolve()` **throw** `AgreelyBillingInactiveError`,
+  distinct from `AgreelyUnavailableError`, so a caller can surface the billing
+  situation explicitly.
+- The CLI exits with code **7** on a 402 (see the exit-code table above).
+
+**Before v0.1.1:** a 402 fell through to the `default` branch and surfaced as
+`AgreelyUnavailableError` (status 402). If you are on an older pin, inspect
+`$e->status === 402` on the caught `AgreelyUnavailableError` to detect it.
+
+**PHP example:**
+
+```php
+use Agreely\Sdk\Errors\AgreelyBillingInactiveError;
+use Agreely\Sdk\Errors\AgreelyUnavailableError;
+
+try {
+    $d = $agreely->checkDetailed('cust_8812', 'Phone number', 'Billing');
+} catch (AgreelyBillingInactiveError $e) {
+    // 402: company subscription lapsed. NOT transient. Actionable.
+    // $e->code === 'billing_inactive', $e->status === 402
+    notifyOps("Agreely subscription lapsed — gating is fail-closed until renewed.");
+} catch (AgreelyUnavailableError $e) {
+    // 503/network/timeout: a transient outage. Retry later.
+}
+```
+
+`check()` (the boolean gate) catches BOTH and returns `false` in both cases, so
+code that uses only `check()` needs no change; the distinction matters only when
+using `checkDetailed()` or `checkBatch()` and wanting to surface the cause.
 
 ### Verify a receipt you were handed
 
@@ -514,11 +551,11 @@ render the template from the filtered view-model (the template never holds the r
 Two hard rules:
 
 1. **Fail closed.** On ANY error or unavailability, show the placeholder, never
-   the ungated value. That includes a hypothetical 402 for an unpaid company:
-   there is **no 402 handler today**, so it surfaces as `AgreelyUnavailableError`
-   (status 402) and `check()` returns `false` / batch calls throw. Catch the
-   throw at the gate and render placeholders. (A dedicated billing error is not
-   in the shipping code; do not assume one exists.)
+   the ungated value. A 402 billing-inactive now surfaces as the typed
+   `AgreelyBillingInactiveError` (as of v0.1.1): `check()` returns `false` /
+   batch calls throw. Catch it at the gate alongside `AgreelyUnavailableError`
+   and render placeholders. Both are fail-closed; the distinction matters only
+   if you want to surface "billing lapsed" vs "outage" in operator tooling.
 2. **Gate per VALUE, batched per VIEW.** Never issue one `check()` per field per
    row in a loop. Use the batch APIs so a whole table or a whole detail view is
    one round-trip (see below).
@@ -935,11 +972,12 @@ degrade where the SDK is embedded (`agreely-cli/README.md:188-198`).
   `Exception::$code` (a non-readonly int), so the wire code is exposed via
   `__get('code')` and `errorCode()`. `$e->code` works; `$e->status` and `$e->field`
   (validation) are real readonly props (`AgreelyError.php:52-65`).
-- **Error to class map** (`Transport.php:161-177`): 401/403 to `AgreelyAuthError`;
+- **Error to class map** (`Transport.php:161-183`): 401/403 to `AgreelyAuthError`;
   400/422 to `AgreelyValidationError` (`->field`); 404 to `AgreelyNotFoundError`;
-  429 to `AgreelyRateLimitError` (`->retryAfter`); 503/network/timeout **and any
-  other status** to `AgreelyUnavailableError` (`retryable` only when 503). **There
-  is no billing/402 error class.**
+  402 to `AgreelyBillingInactiveError` (code `billing_inactive`, status 402,
+  non-retryable; as of v0.1.1); 429 to `AgreelyRateLimitError` (`->retryAfter`);
+  503/network/timeout **and any other 5xx** to `AgreelyUnavailableError`
+  (`retryable` only when 503).
 - **`consentRequests()->create` is never auto-retried** (it emails). It attaches a
   unique `Idempotency-Key`; pass your own to make a retry replay the original 201
   instead of double-issuing (`ConsentRequests.php:37-48`).
@@ -970,9 +1008,8 @@ degrade where the SDK is embedded (`agreely-cli/README.md:188-198`).
   UNTRUSTED receipts, inject your own `resolver` (or `--did-doc`) to control the
   request surface. It is HTTPS-only and can never yield a false "verified"
   (`ReceiptVerifier.php:30-33`).
-- **CLI `--version` prints `0.1.0`** (the `VERSION` constant in `cli.ts:31`) even
-  though `package.json` is `0.1.1`. The bin is authoritative for behavior; the
-  number is cosmetic drift.
+- **CLI `--version` prints `0.1.2`** (the `VERSION` constant in `cli.ts:31`),
+  matching `package.json`.
 - **PHPStan: `src/` is clean at level max; two TEST files complain.**
   `test/Unit/CheckBatchTest.php` and `test/Unit/IssuanceVectorTest.php` trip
   offset-on-mixed errors because they read decoded-JSON vectors loosely. The
