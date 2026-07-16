@@ -1,6 +1,6 @@
 ---
 name: agreely
-description: Use when integrating Agreely, the Law 25 (Loi 25 / Quebec, P-39.1) consent-accountability layer, via the PHP SDK (composer package `agreely/sdk`) or the CLI (npm `@agreely/cli`, bin `agreely`). Both are thin, typed clients over the live `/v1` consent API (default `https://api.agreely.ca`), with a matching TypeScript SDK (`@agreely/sdk`). Triggers on `use Agreely\Sdk\Agreely`, `new Agreely([...])`, `$agreely->check()/checkDetailed()/checkBatch()/checkFields()`, `$agreely->consentRequests()/manualConsents()/relationships()/catalog()/identity()`, `Agreely::verifyReceipt()`, the typed errors `AgreelyAuthError`/`AgreelyValidationError`/`AgreelyNotFoundError`/`AgreelyRateLimitError`/`AgreelyUnavailableError`/`AgreelyBillingInactiveError`/`AgreelyConfigError`/`AgreelyTimeoutError`, the `degradeOnOutage` fail-open policy, the `agreely {check,catalog,whoami,requests,request create|show|cancel|wait,verify,manual-consent create|claim-link|revoke|erase,relationship end|revert,login,config set}` commands, the env vars `AGREELY_API_KEY`/`AGREELY_BASE_URL`/`AGREELY_RPC_URL`/`AGREELY_SILENCE_WARNINGS`, the offline receipt-verifier (DID `did:web`/`did:agreely` resolution, JCS canonicalization, Ed25519 company signature, WebAuthn citizen assertion, IPFS disclosure copy, Base-mainnet on-chain document anchor), the golden `vectors/vectors.json`, or any task framed as "gate this data use on a live consent check", "issue a Law 25 consent request", "record an offline company-attested consent", "end a customer relationship (art. 23)", "verify a consent receipt". Covers the one-call boolean gate (ALLOW is the only true), the fail-closed-by-default outage model plus the two-gate audited fail-open, the never-cache-an-allow rule (spec §16), the protocol `requestId`/`consentRef` (0x + 64 hex, never a uuid) identifiers, offline-first receipt verification with its honest pass/trust matrix (a citizen receipt is at most `partial` offline), the CLI exit-code contract (0 allow, 10 deny, 2 usage, 3 auth, 4 outage, 5 rate-limited, 6 verify-failed, 7 billing-inactive), the agent-scriptable `--json` mode with a stderr `{error:{code,message}}` envelope, and the loud honest framing: Agreely RECORDS and verifies consent and produces signed receipts; it does NOT certify that an organization is compliant.
+description: Use when integrating Agreely, the Law 25 (Loi 25 / Quebec, P-39.1) consent-accountability layer, via the PHP SDK (composer package `agreely/sdk`) or the CLI (npm `@agreely/cli`, bin `agreely`). Both are thin, typed clients over the live `/v1` consent API (default `https://api.agreely.ca`), with a matching TypeScript SDK (`@agreely/sdk`). Triggers on `use Agreely\Sdk\Agreely`, `new Agreely([...])`, `$agreely->check()/checkDetailed()/checkBatch()/checkFields()`, `$agreely->consentRequests()/manualConsents()/relationships()/catalog()/identity()`, `Agreely::verifyReceipt()`, the typed errors `AgreelyAuthError`/`AgreelyValidationError`/`AgreelyNotFoundError`/`AgreelyRateLimitError`/`AgreelyUnavailableError`/`AgreelyBillingInactiveError`/`AgreelyConfigError`/`AgreelyTimeoutError`, the `degradeOnOutage` fail-open policy, the `agreely {check,catalog,whoami,requests list,request create|show|cancel|wait,verify,manual-consent create|claim-link|revoke|erase,relationship end|revert,login,config set}` commands (`requests list` filters by `--customer`/`--status`/`--limit`/`--cursor`; the `consentRequests()->hasPending()` dedup helper), the env vars `AGREELY_API_KEY`/`AGREELY_BASE_URL`/`AGREELY_RPC_URL`/`AGREELY_SILENCE_WARNINGS`, the offline receipt-verifier (DID `did:web`/`did:agreely` resolution, JCS canonicalization, Ed25519 company signature, WebAuthn citizen assertion, IPFS disclosure copy, Base-mainnet on-chain document anchor), the golden `vectors/vectors.json`, or any task framed as "gate this data use on a live consent check", "issue a Law 25 consent request", "record an offline company-attested consent", "end a customer relationship (art. 23)", "verify a consent receipt". Covers the one-call boolean gate (ALLOW is the only true), the fail-closed-by-default outage model plus the two-gate audited fail-open, the never-cache-an-allow rule (spec §16), the protocol `requestId`/`consentRef` (0x + 64 hex, never a uuid) identifiers, offline-first receipt verification with its honest pass/trust matrix (a citizen receipt is at most `partial` offline), the CLI exit-code contract (0 allow, 10 deny, 2 usage, 3 auth, 4 outage, 5 rate-limited, 6 verify-failed, 7 billing-inactive), the agent-scriptable `--json` mode with a stderr `{error:{code,message}}` envelope, and the loud honest framing: Agreely RECORDS and verifies consent and produces signed receipts; it does NOT certify that an organization is compliant.
 ---
 
 # Agreely: PHP SDK + CLI
@@ -32,7 +32,7 @@ anchoring is **Base mainnet** (chainId 8453). The canonical sources are
 | Package | `agreely/sdk` (Packagist) | `@agreely/cli` (npm) | `@agreely/sdk` (npm) |
 | Install | `composer require agreely/sdk` | `npm i -g @agreely/cli` | `npm i @agreely/sdk` |
 | Binary | (none) | `agreely` (`bin` to `dist/bin.js`) | (none) |
-| Version | `0.1.1` (Packagist) | `0.1.2` (`package.json`) | `0.1.1` |
+| Version | `0.2.0` (Packagist) | `0.2.0` (`package.json`) | `0.2.0` |
 | Runtime | PHP `^8.2 \|\| ^8.3 \|\| ^8.4 \|\| ^8.5`, `ext-curl` + `ext-json` | Node `>= 18` | Node `>= 18` |
 | License | MIT | MIT | MIT |
 | Entry | `Agreely\Sdk\Agreely` | (none) | `import { Agreely } from "@agreely/sdk"` |
@@ -43,7 +43,7 @@ PHP, TS, and the wire contract cannot silently drift
 reimplements no HTTP/decision/normalization logic (`agreely-cli/README.md:8-12`).
 
 **Empirically verified for this skill** (PHP 8.5.6, Node 26): the PHP unit suite
-is green, `composer test` returns *OK (114 tests, 278 assertions)*; PHPStan level
+is green, `composer test` returns *OK (122 tests, 294 assertions)*; PHPStan level
 max on `src/` returns *No errors*; `node dist/bin.js verify <company-vector>
 --did-doc <did>` returns `overall: verified`, exit 0; a mutated item category
 returns `overall: failed`, exit 6.
@@ -159,12 +159,47 @@ $r = $agreely->consentRequests()->create([
 | Method | Endpoint | Notes |
 |---|---|---|
 | `create(array $input, array $options = []): IssuedRequest` | `POST /v1/consent-requests` | **never auto-retried** (it emails); auto `Idempotency-Key` per call, override via `$options['idempotencyKey']`. Requires exactly one of `consentDocumentId`/`documentCode`; the items derive from the document server-side. `ConsentRequests.php:46` |
-| `list(array $input = []): ConsentRequestPage` | `GET /v1/consent-requests` | `$input['status']`, `$input['cursor']`; `$page->items`, `$page->nextCursor`. `ConsentRequests.php:96` |
-| `get(string $requestId): ConsentRequestRecord` | `GET /v1/consent-requests/{id}` | `ConsentRequests.php:111` |
-| `cancel(string $requestId): CancelledRequest` | `POST /v1/consent-requests/{id}/cancel` | company-side "revoke before action"; idempotent server-side (`$c->cancelled` false on a no-op); 404 on unknown id. `ConsentRequests.php:131` |
-| `iterate(array $input = []): Generator` | (paginates `list`) | auto-paginate; bounded by `maxPages` (default 1000). `ConsentRequests.php:152` |
-| `collect(array $input = []): array` | (paginates `list`) | `iterate` into an array. `ConsentRequests.php:183` |
-| `waitForSettlement(string $requestId, array $opts = []): ConsentRequestRecord` | (polls `get`) | until `approved\|refused\|expired\|revoked_before_action`, else `AgreelyTimeoutError`. `intervalMs` (2000), `timeoutMs` (120000). `ConsentRequests.php:195` |
+| `list(array $input = []): ConsentRequestPage` | `GET /v1/consent-requests` | all filters optional: `$input['customerId']` (the company's own subject ref), `$input['status']`, `$input['limit']` (page size; default 50, max 100), `$input['cursor']`. `$page->items`, `$page->nextCursor`. Metadata only, newest first, tenant-scoped by the key. `ConsentRequests.php:99` |
+| `hasPending(string $customerId, ?string $documentCode = null): bool` | (paginates `list`) | dedup helper: is a still-`pending` request already outstanding for this customer (optionally for a given `documentCode`)? Call it **before** `create` to avoid re-issuing (a second email). Blank `$customerId` throws `AgreelyConfigError`. Metadata convenience, **not** a compliance decision. `ConsentRequests.php:127` |
+| `get(string $requestId): ConsentRequestRecord` | `GET /v1/consent-requests/{id}` | `ConsentRequests.php:143` |
+| `cancel(string $requestId): CancelledRequest` | `POST /v1/consent-requests/{id}/cancel` | company-side "revoke before action"; idempotent server-side (`$c->cancelled` false on a no-op); 404 on unknown id. `ConsentRequests.php:163` |
+| `iterate(array $input = []): Generator` | (paginates `list`) | auto-paginate; bounded by `maxPages` (default 1000). `ConsentRequests.php:184` |
+| `collect(array $input = []): array` | (paginates `list`) | `iterate` into an array. `ConsentRequests.php:221` |
+| `waitForSettlement(string $requestId, array $opts = []): ConsentRequestRecord` | (polls `get`) | until `approved\|refused\|expired\|revoked_before_action`, else `AgreelyTimeoutError`. `intervalMs` (2000), `timeoutMs` (120000). `ConsentRequests.php:233` |
+
+#### Looking up requests by `customerId` (list + dedup)
+
+`list` takes a `customerId` filter (the company's own subject ref, the SAME ref
+used by `check`), plus `status`, `limit` (default 50, max 100), and a keyset
+`cursor` (newest-first). The page is **metadata only** and tenant-scoped by the
+API key; each `ConsentRequestRecord` now carries `->customerId` and
+`->documentCode`.
+
+```php
+// One page of a customer's pending requests (newest first).
+$page = $agreely->consentRequests()->list([
+    'customerId' => 'cli_1',
+    'status'     => 'pending',
+    'limit'      => 100,
+]);
+foreach ($page->items as $r) {
+    // $r->requestId, $r->status, $r->customerId, $r->documentCode, $r->createdAt, $r->validUntil
+}
+// $page->nextCursor: pass it back as ['cursor' => $page->nextCursor] for the next page,
+// or use ->iterate(['customerId' => 'cli_1', 'status' => 'pending']) to auto-paginate.
+
+// The dedup shortcut: DON'T re-issue if a pending one already exists.
+if ($agreely->consentRequests()->hasPending('cli_1', 'infolettre')) {
+    // a pending 'infolettre' request is already outstanding — skip create()
+}
+```
+
+**Honest framing:** a request lookup returns *metadata* about what was issued
+(requestId, status, customerId, documentCode, timestamps). It is **not** a
+consent decision and not a compliance claim: `hasPending` reporting `true` means
+an email/offer is outstanding, not that consent was granted. To know whether a
+cell is actually consented, use `check` / `checkDetailed` (a `pending` request is
+`status: none` at the gate until the citizen signs).
 
 ### `manualConsents()`: offline company-attested, scope `attest` (`ManualConsents.php`)
 
@@ -225,7 +260,7 @@ $entries = $agreely->catalog()->list(); // list<CatalogEntry>: id, category, pur
 - **`CheckFieldsResult`** `->isAllowed($ref,$cat,$pur): bool`, `->decisions`.
 - **`Identity`** `scopes: list<string>, baseUrl?`.
 - **`IssuedRequest`** `requestId, status, deepLink, emailDelivered, items, document?`.
-- **`ConsentRequestRecord`** `requestId, status, validUntil, expiresAt, createdAt, settledAt?, items, document?`.
+- **`ConsentRequestRecord`** `requestId, status, validUntil, expiresAt, createdAt, settledAt?, customerId, documentCode, items, document?`.
 - **`ManualConsentResult`** `consentId, merkleRoot, consentRefs: list<string>, assurance, anchored`.
 - **`RelationshipEnded`** `customerRef, status, endedAt, endedBy`.
 - **`CancelledRequest`** `requestId, status, cancelled`.
@@ -333,7 +368,7 @@ agreely check <customerId> <category> <purpose> [--json]      # 0 allow, 10 deny
 agreely check --batch <file.json> [--json]                    # array of {customerRef,category,purpose}; 0 if ALL allow, 10 if ANY deny
 agreely catalog [--json]
 agreely whoami [--json]                                       # server-verified: the key's real scopes
-agreely requests [--status <s>] [--cursor <id>] [--json]      # cursor pagination
+agreely requests list [--customer <ref>] [--status <s>] [--limit <n>] [--cursor <id>] [--json]  # metadata only; bare `agreely requests ...` is a kept alias
 agreely request create --customer <id> --to <email> (--document <versionId> | --document-code <code>) --valid-until <YYYY-MM-DD> [--idempotency-key <k>] [--json]
 agreely request show <requestId> [--json]                     # requestId is 0x + 64 hex
 agreely request cancel <requestId> [--json]                   # idempotent
@@ -660,13 +695,18 @@ $res = $agreely->manualConsents()->record([
 // Required keys: customerId, recipientEmail, validUntil, and exactly ONE of
 // consentDocumentId / documentCode. Items derive from the document server-side.
 // NEVER auto-retried (it emails); pass a stable idempotencyKey to make a retry replay.
-$req = $agreely->consentRequests()->create([
-    'customerId'        => 'cli_1',
-    'recipientEmail'    => 'ana@example.com',
-    'documentCode'      => 'infolettre',                              // or 'consentDocumentId' => '<versionId>'
-    'validUntil'        => '2031-01-01',
-], ['idempotencyKey' => 'onboard-cli_1']);
-// $req->requestId (0x + 64hex), $req->status ("pending"), $req->deepLink (send/show it), $req->emailDelivered
+//
+// DEDUP: before re-issuing, ask if a pending request already exists for this
+// customer (optionally for this documentCode), so a re-onboard does not re-email.
+if (!$agreely->consentRequests()->hasPending('cli_1', 'infolettre')) {
+    $req = $agreely->consentRequests()->create([
+        'customerId'        => 'cli_1',
+        'recipientEmail'    => 'ana@example.com',
+        'documentCode'      => 'infolettre',                          // or 'consentDocumentId' => '<versionId>'
+        'validUntil'        => '2031-01-01',
+    ], ['idempotencyKey' => 'onboard-cli_1']);
+    // $req->requestId (0x + 64hex), $req->status ("pending"), $req->deepLink, $req->emailDelivered
+}
 ```
 
 **Ordering for a Memento-style onboarding flow:**
@@ -1008,7 +1048,7 @@ degrade where the SDK is embedded (`agreely-cli/README.md:188-198`).
   UNTRUSTED receipts, inject your own `resolver` (or `--did-doc`) to control the
   request surface. It is HTTPS-only and can never yield a false "verified"
   (`ReceiptVerifier.php:30-33`).
-- **CLI `--version` prints `0.1.2`** (the `VERSION` constant in `cli.ts:31`),
+- **CLI `--version` prints `0.2.0`** (the `VERSION` constant in `cli.ts:31`),
   matching `package.json`.
 - **PHPStan: `src/` is clean at level max; two TEST files complain.**
   `test/Unit/CheckBatchTest.php` and `test/Unit/IssuanceVectorTest.php` trip
