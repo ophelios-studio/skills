@@ -1,0 +1,14 @@
+{
+  "name": "agreely-cookies-examples",
+  "private": true,
+  "type": "module",
+  "description": "Runnable examples for the agreely-cookies skill: zero-click audit, edge probe, offline proof verification, server-side consent gate.",
+  "scripts": {
+    "audit": "node zero-click-check.mjs",
+    "verify": "node verify-proof.mjs",
+    "test:keccak": "node keccak256.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0"
+  }
+}

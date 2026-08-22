@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Agreely cookie banner: the canonical install</title>
+
+  <!-- ==========================================================================
+       1. THE ONE TAG. FIRST in <head>, and NEVER with `async` or `defer`.
+          The loader must run SYNCHRONOUSLY: before it returns it installs the
+          Consent Mode v2 default-deny signal and arms the dynamic-injection
+          guard. Add `async` and both happen AFTER your tag manager has already
+          booted, so trackers fire on zero click and you never see an error.
+          Measured difference (see zero-click-check.mjs):
+            without async -> next tag sees __agreelyConsentDefault === true,
+                             an injected google-analytics.com script is
+                             neutralized to type="text/plain"
+            with    async -> next tag sees false, gtag undefined, dataLayer
+                             empty, and the injected tracker RUNS
+          The loader is ~2.5 KB gzipped, so "synchronous" costs one small
+          request; the banner module itself is injected asynchronously.
+       ========================================================================== -->
+  <script src="https://cdn.agreely.ca/e/v1/loader.js"
+          data-agreely="agr_pub_REPLACE_WITH_YOUR_SITE_KEY"></script>
+
+  <!-- 2. Your tag manager goes AFTER Agreely, and it may be async. -->
+  <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXXXXX"></script>
+
+  <!-- 3. Declaratively blocked third-party scripts.
+          type="text/plain" stops the browser executing them; the banner swaps
+          the type back (preserving any nonce) once THAT category is granted.
+          Categories: strictly_necessary | functional | analytics | marketing
+          strictly_necessary scripts need no attribute: they are never gated. -->
+  <script type="text/plain" data-agreely-category="analytics"
+          src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+
+  <script type="text/plain" data-agreely-category="marketing">
+    fbq('init', 'XXXXXXXXXXXXXXXXXX');
+  </script>
+</head>
+
+<body>
+  <h1>Your page</h1>
+
+  <!-- 4. A consent-gated iframe: data-agreely-src instead of src. The banner
+          renders a bilingual placeholder at the same size until the category
+          is granted, then swaps in the real src. -->
+  <iframe data-agreely-src="https://www.youtube.com/embed/XXXXXXXXXXX"
+          data-agreely-category="marketing"
+          width="560" height="315" title="Video"></iframe>
+
+  <!-- 5. The reopen affordance. Keep it on EVERY page and keyboard reachable:
+          withdrawing consent has to be as easy as giving it. Either the
+          attribute or the programmatic API works. -->
+  <a href="#" data-agreely-open>Gérer mes témoins (cookies)</a>
+
+  <script>
+    // window.agreelyCookies exists from the moment the loader runs (it is a
+    // command queue before the module lands, so early calls are replayed).
+    // Real surface, measured on v1.3.16:
+    //   version, ready, open(), acceptAll(), refuseAll(), withdraw()
+    // There is NO custom DOM event. To react to a change, read the
+    // `agreely_consent` cookie, or hang off Google Consent Mode.
+    document.getElementById('reset')?.addEventListener('click', () => {
+      window.agreelyCookies.withdraw();
+    });
+  </script>
+</body>
+</html>
+
+<!--
+  CSP: three directives, and NO unsafe-inline (verified in a real browser under
+  a strict nonce policy, zero violations):
+
+    script-src  https://cdn.agreely.ca ;
+    connect-src https://cdn.agreely.ca ;   <- SRI forces a CORS fetch of the module
+    img-src     https://cdn.agreely.ca ;   <- the logo endpoint
+
+  Nonce-based script-src? Put your nonce on the loader tag AND pass it through:
+    <script nonce="abc123" src="https://cdn.agreely.ca/e/v1/loader.js"
+            data-agreely="agr_pub_..." data-nonce="abc123"></script>
+
+  style-src needs NOTHING: the banner styles a shadow root through a
+  constructable CSSStyleSheet (adoptedStyleSheets), so there is no <style>
+  element and no inline style attribute to allow.
+
+  Pin an exact version instead of the stable channel:
+    <script src="https://cdn.agreely.ca/e/v1.3.16/loader.js" data-agreely="agr_pub_..."></script>
+  Pinned paths are immutable (Cache-Control: public, max-age=31536000, immutable).
+  The stable /e/v1/ path is no-cache + strong ETag, so a publish propagates on the
+  next load via a 304 rather than a hard refresh.
+-->
