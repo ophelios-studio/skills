@@ -14,6 +14,8 @@
 #   4  unavailable (an Agreely outage, OR a verify that could not complete)
 #   5  rate-limited (429)
 #   6  verify-failed (a receipt did NOT verify: a real tamper)
+#   7  billing-inactive (HTTP 402: the company's Agreely subscription lapsed).
+#      NOT transient and NOT retryable. Every gate is fail-closed until it is paid.
 #  10  check DENY (a clean, expected negative: NOT an error)
 #   1  uncategorized failure
 #
@@ -43,11 +45,21 @@ gate_on_consent() {
     4)  echo "OUTAGE (fail-closed): treat as deny" >&2; return 4 ;;
     3)  echo "AUTH: check AGREELY_API_KEY / scope" >&2; return 3 ;;
     5)  echo "RATE-LIMITED: back off and retry" >&2;    return 5 ;;
+    7)  # HTTP 402. A real production condition, not a surprise: the company's
+        # subscription lapsed, so every gate is fail-closed until someone pays.
+        # Retrying will never fix it. Page a human; do NOT proceed with the data use.
+        echo "BILLING INACTIVE: the Agreely subscription is lapsed/unpaid." >&2
+        echo "  Gating stays fail-closed until it is renewed. Not retryable." >&2
+        return 7 ;;
     *)  echo "unexpected exit $rc: $out" >&2;           return "$rc" ;;
   esac
 }
 
 # The category/purpose are sent RAW; the server normalizes (FR|EN, case, space).
+# An ALLOW arrives either as {"status":"active"} (a consent record exists) or as
+# {"status":"necessity","basis":"..."} (a non-consent lawful basis the company
+# declared: NO record exists and none is needed). Both are exit 0. Branch on the
+# EXIT CODE, never on "status".
 gate_on_consent "cust-42" "Email Address" "Marketing Outreach"
 echo "check exit: $?"
 echo
