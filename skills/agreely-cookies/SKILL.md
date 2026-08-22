@@ -285,7 +285,12 @@ that matter, all measured:
 - **Billing never darkens the banner.** The monthly-loads quota is *never consulted*
   on the serve path. The banner is the customer's legal consent mechanism and must
   not go dark for a billing reason. Only the cosmetic branding perk is withheld for
-  non-payment, and a free Agreely-branded banner is itself fully usable.
+  non-payment, and a free Agreely-branded banner is itself fully usable. Do not add a
+  quota check there; the source says so in as many words.
+  Distinguish **quota** (soft, never gates) from **entitlement** (allowed websites).
+  A lapsed or cancelled tenant whose entitlement drops to 0 falls back to the neutral
+  essential-only `active:false` payload, which is the protective direction: it never
+  silently allows non-essential trackers. Every free tier is entitled.
 - **A "load" is deduped.** One billed load per `{website, truncated IP, minute}`.
   Measured: 5 config fetches from one IP in one minute increased the meter by **1**.
 - **Abuse stops the meter, not the service.** Over 600 counted fetches/min per key
