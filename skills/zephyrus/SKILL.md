@@ -1,6 +1,6 @@
 ---
 name: zephyrus
-description: Use when building or changing an app on the Zephyrus PHP 8.4+ framework (Composer package `zephyrus-framework/core`, source github.com/ophelios-studio/zephyrus-core). Triggers on `Zephyrus\` imports, `ApplicationBuilder`, `Configuration::fromYamlFile`, a `config.yml` with `application:`, `session:`, `security:`, `localization:` or `database:` sections, attribute routes (`#[Get]`, `#[Post]`, `#[Root]`, `#[Middleware]`, `#[RequiresEnv]`, `#[WithoutMiddleware]`), `Router::discoverControllers`, `Zephyrus\Controller\Controller`, the `RenderResponses` trait and Latte views, `Request`/`Response`, `SessionMiddleware`, `CsrfMiddleware`, `MaxBodySizeMiddleware`, `SecureHeadersMiddleware`, `FormValidator`/`Rules`, `Database`/`Broker`/`Entity`, `Mailer`, and boot errors such as "is not a known section", "is an unknown key" or "Configuration declares security settings that this application does not enforce as declared". Covers the bootstrap, strict configuration, the boot-time security wiring check, sessions and CSRF, routing rules and refusals, error reporting, the PostgreSQL layer, and the Broker/Service/Entity convention, with a repro for every gotcha.
+description: Use when building or changing an app on the Zephyrus PHP 8.4+ framework (Composer package `zephyrus-framework/core`). Triggers on `Zephyrus\` imports, `ApplicationBuilder`, `Configuration::fromYamlFile`, a `config.yml` with `application:`, `session:`, `security:` or `database:` sections, attribute routes (`#[Get]`, `#[Post]`, `#[Middleware]`, `#[RequiresEnv]`), `discoverControllers`, Latte views with `RenderResponses`, `SessionMiddleware`, `CsrfMiddleware`, `MaxBodySizeMiddleware`, `FormValidator`, `Database`/`Broker`/`Entity`, `Mailer`, and boot errors such as "is not a known section", "is an unknown key" or "Configuration declares security settings that this application does not enforce as declared". Covers the bootstrap, strict configuration, the boot-time security wiring check, sessions and CSRF, routing rules, error reporting, the PostgreSQL layer and the Broker/Service/Entity convention, with a repro for every gotcha.
 ---
 
 # Zephyrus
@@ -34,6 +34,26 @@ Packagist serves `dev-dev`: no `repositories` entry. The core requires
 `ext-intl`, `ext-mbstring`, `ext-pdo`, `ext-sodium` and `ext-fileinfo`, and
 brings `latte/latte`, `tracy/tracy`, `symfony/yaml`, `vlucas/phpdotenv` and
 `phpmailer/phpmailer`. PostgreSQL needs `pdo_pgsql`.
+
+Where each class lives (the PSR-4 root is `Zephyrus\` under `src/Zephyrus/`):
+
+| Namespace | Classes |
+| --- | --- |
+| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` |
+| `Zephyrus\Core\Config` | `Configuration`, `ConfigSection`, `ConfigurationException`, `DatabaseConfig` |
+| `Zephyrus\Http` | `Request`, `Response`, `MiddlewareInterface` |
+| `Zephyrus\Routing` | `Router` |
+| `Zephyrus\Routing\Attribute` | `Get`, `Post`, `Put`, `Patch`, `Delete`, `Root`, `Middleware`, `MiddlewareGroup`, `WithoutMiddleware`, `RequiresEnv` |
+| `Zephyrus\Routing\Exception` | `RouteNotFoundException`, `RouteMiddlewareException`, `RouteSignatureException` |
+| `Zephyrus\Controller` | `Controller` |
+| `Zephyrus\Rendering` | `LatteEngine`, `PhpEngine`, `RenderResponses`, `RenderConfig`, `Asset`, `RenderException` |
+| `Zephyrus\Security` | `SecureHeadersMiddleware`, `SecureHeadersConfig`, `MaxBodySizeMiddleware`, `CsrfMiddleware`, `CsrfConfig`, `CsrfFailure`, `CsrfTokenManagerInterface`, `ForceHttpsMiddleware`, `AllowedHostsMiddleware`, `AuthGuardMiddleware`, `HeaderTokenGuard`, `IpAllowlistGuard`, `PredicateAuthGuard`, `AllAuthGuard`, `AnyAuthGuard`, `NotAuthGuard` |
+| `Zephyrus\Session` | `SessionManager`, `SessionMiddleware`, `SessionCsrfTokenManager`, `DatabaseSessionHandler`, `Flash`, `SessionException` |
+| `Zephyrus\Validation` | `FormValidator`, `Rules`, `ErrorBag`, `ValidationException` |
+| `Zephyrus\Event` | `EventDispatcher` |
+| `Zephyrus\Data` | `Database`, `Broker`, `Entity`, `Binary`, `DatabaseException` |
+| `Zephyrus\Mailer` | `Mailer`, `MailerConfig`, `MailerException` |
+| `Zephyrus\Formatting` | `Formatter`, `FormatterException` |
 
 ## Bootstrap
 
@@ -122,12 +142,22 @@ What the builder does and does not do:
   `application.debug` (Tracy) and `localization.timezone`. Nothing under
   `security:` or `session:` is applied for you: you mount the middleware, and
   `build()` refuses to boot when a declared security key is not enforced.
+- `build()` also sets the `Formatter` behind `format()`. A command-line script
+  that never calls `build()` must call `App::setFormatter(new Formatter('en_CA'))`
+  first, or `format('decimal', 1234.5)` throws `FormatterException: format('decimal')
+  needs a Formatter: call App::setFormatter() first.`
 - The framework never reads `.env`. Load it yourself before the configuration:
 
 ```php
 Dotenv\Dotenv::createImmutable($root)->safeLoad(); // the framework never reads .env itself
 $config = Configuration::fromYamlFile($root . '/config.yml');
 ```
+
+One request per process. `App` keeps its services for the whole process; in
+the framework README's words: "This assumes one request per process (php-fpm,
+mod_php), as does the PHP session. Persistent workers (RoadRunner, Swoole,
+FrankenPHP worker mode) are not supported: `App::reset()` is a testing tool, not
+a between-requests hook."
 
 ## Configuration
 
@@ -386,6 +416,13 @@ when routes are added: declare groups before `discoverControllers()` (gotcha 17)
 it, `session([...])` writes and flash messages are dropped silently (gotcha 19).
 Tests and CLI scripts use array storage: `new SessionManager([])`.
 
+To keep sessions in PostgreSQL, register `DatabaseSessionHandler` after
+`new SessionManager()` and before `build()`:
+`$session->setHandler(new DatabaseSessionHandler(fn (): Database => Database::fromConfig($config->database)))`.
+It writes to `public.session` by default (the class docblock gives the
+`CREATE TABLE`): `$session->set('user_id', 7)` stores one row with `data`
+`user_id|i:7;`. Behind PgBouncer transaction pooling, pass `lockSessions: false`.
+
 There is no automatic token injection: render the field in every form.
 
 ```latte
@@ -524,6 +561,12 @@ and `pdo()`. Parameters are bound by type (`null`, booleans, `DateTimeInterface`
 `stdClass` with integers, floats, booleans, PostgreSQL arrays as PHP arrays and
 JSON/JSONB decoded.
 
+One SQL statement per `execute()`: `"INSERT ...; INSERT ..."` inserts nothing
+and throws a `DatabaseException` whose `getMessage()` is `Query failed [SQLSTATE
+42601]: statement and driver detail withheld, read sql() and driverMessage() to
+inspect them` and whose `driverMessage()` ends in `cannot insert multiple
+commands into a prepared statement`.
+
 The Broker/Service/Entity split is a convention of the apps built on Zephyrus
 (Agreely uses it under `app/Models/{Domain}/{Brokers,Services,Entities}`), not
 something the framework enforces. `Broker` and `Entity` are framework base
@@ -570,7 +613,10 @@ $db->registerTypeConversion('NUMERIC', static fn (string $value): string => $val
 
 Register `'mailer' => MailerConfig::class` (keys `smtp.host`, `smtp.port`,
 `smtp.username`, `smtp.password`, `smtp.encryption`, `from.address`,
-`from.name`):
+`from.name`). `smtp.encryption` takes `tls` (the default), `ssl`, or `''` for
+none; `encryption: none` stops the boot with `Configuration section 'mailer'
+field 'smtp.encryption' has invalid value "none": must be one of 'tls', 'ssl' or
+'' (empty, meaning no encryption at all); ...`.
 
 ```php
 try {
@@ -606,6 +652,8 @@ JSON `rawBody:` (gotcha 21). `App` holds per-request statics
 ## Gotchas, each with its repro
 
 Every repro below was run on `071064e`: the input, then the observed result.
+Repros marked *(upgrading from 0.13)* only concern an app written for
+`v0.13.0`; a new app can skip them.
 
 **1. A misspelled section or key stops the boot.** Fix the spelling; keep one
 spelling per key.
@@ -681,8 +729,8 @@ in:  csrf: true
 out: ConfigurationException: Configuration section 'security' field 'csrf' must be a mapping, such as csrf: { enabled: false }.
 ```
 
-**7. Automatic CSRF token injection is gone.** Delete `auto_html` and render the
-hidden field (see Sessions).
+**7. Automatic CSRF token injection is gone** *(upgrading from 0.13)*. Delete
+`auto_html` and render the hidden field (see Sessions).
 
 ```text
 in:  csrf: { auto_html: true }
@@ -695,7 +743,7 @@ out: ConfigurationException: Configuration section 'security' field 'csrf.auto_h
 ```text
 in:  database: postgres://u:p@h/db
 out: ConfigurationException: Configuration section 'database' field 'database' has invalid value "postgres://***@h/db": must be a database name, not a connection URL.
-in:  emulate_prepares: false
+in:  emulate_prepares: false   (upgrading from 0.13)
 out: ConfigurationException: Configuration section 'database' field 'emulate_prepares' has been REMOVED from Zephyrus and is no longer honoured. ... To fix: delete this line from the database section.
 ```
 
@@ -738,7 +786,7 @@ out: ConfigurationException: !env tag at "application.environment": "HTTP_APP_EN
 ```text
 in:  $config->section('database')   (also config('Database'))
 out: InvalidArgumentException: Section "database" is a built-in typed property; use $configuration->database or config('database') instead.
-in:  Configuration::fromYamlFile($path, ['database' => RenderConfig::class])
+in:  Configuration::fromYamlFile($path, ['database' => RenderConfig::class])   (upgrading from 0.13)
 out: InvalidArgumentException: Section factory "database" collides with the built-in section "database"; read it with $configuration->database instead.
 ```
 
