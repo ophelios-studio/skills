@@ -1,749 +1,947 @@
 ---
 name: zephyrus
-description: Use when working in a Zephyrus PHP framework project (`zephyrus-framework/core`). Triggers on attribute routing (`#[Get]`, `#[Post]`, `#[Put]`, `#[Patch]`, `#[Delete]`, `#[Root]`, `#[Middleware]`, `#[RequiresEnv]`), `ApplicationBuilder`, `Controller`, `RenderResponses` trait, `Request`/`Response` value objects, `Configuration::fromYamlFile`, `ConfigSection` subclasses, Latte templates in `app/Views/`, Broker/Service/Entity layering, `Zephyrus\Data\Broker` or `Zephyrus\Data\Entity` extensions, controller auto-discovery, and the `config.yml` shape with `application:`/`render:`/`localization:`/`security:`/`database:` sections. Covers attribute routing with MODE-based controller scoping (one codebase, multiple entry points), named middleware registration vs attribute application, raw-SQL Broker pattern with Service/Entity layering, PostgreSQL bytea sanitization, custom controller factory for render-engine injection, `DATABASE_URL` parsing for cloud deploys, DECIMAL-as-string for money precision, fresh-DB-per-test bootstrap with transaction-isolated integration tests, keyset (cursor) pagination, and the no-ORM/no-migration philosophy. Empirical patterns drawn from the production `immunity-app`.
+description: Use when building or changing an app on the Zephyrus PHP 8.4+ framework (Composer package `zephyrus-framework/core`, source github.com/ophelios-studio/zephyrus-core). Triggers on `Zephyrus\` imports, `ApplicationBuilder`, `Configuration::fromYamlFile`, a `config.yml` with `application:`, `session:`, `security:`, `localization:` or `database:` sections, attribute routes (`#[Get]`, `#[Post]`, `#[Root]`, `#[Middleware]`, `#[RequiresEnv]`, `#[WithoutMiddleware]`), `Router::discoverControllers`, `Zephyrus\Controller\Controller`, the `RenderResponses` trait and Latte views, `Request`/`Response`, `SessionMiddleware`, `CsrfMiddleware`, `MaxBodySizeMiddleware`, `SecureHeadersMiddleware`, `FormValidator`/`Rules`, `Database`/`Broker`/`Entity`, `Mailer`, and boot errors such as "is not a known section", "is an unknown key" or "Configuration declares security settings that this application does not enforce as declared". Covers the bootstrap, strict configuration, the boot-time security wiring check, sessions and CSRF, routing rules and refusals, error reporting, the PostgreSQL layer, and the Broker/Service/Entity convention, with a repro for every gotcha.
 ---
 
-# Zephyrus Framework
+# Zephyrus
 
-A PHP 8.4+ framework with attribute routing, immutable HTTP objects,
-typed configuration, and security middleware. Test coverage in the core
-runs ~98%; the framework intentionally ships a **small surface area**
-and pushes the rest to convention.
+Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
+`Response`, typed YAML configuration that refuses unknown keys, security
+middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
+for PostgreSQL. No ORM, no migrations.
 
-**Heads-up:** Zephyrus has **no official documentation site yet**
-("coming soon"). The framework's GitHub README is light. This skill is
-the canonical reference for the empirical patterns, drawn from the
-production `immunity-app` (private to ophelios-studio; ask for access).
-The framework repos are:
+Everything below was run against the `dev` branch at commit `071064e`
+(Packagist `dev-dev`). The last tag, `v0.13.0`, predates many breaking changes;
+the framework's `CHANGELOG.md` lists each one with the change to make. Before
+1.0 a minor version may break the API. The boot-time error messages name their
+own fix: when one disagrees with this file, follow the message.
 
-- Core: https://github.com/zephyrus-framework/core
-- Application template: https://github.com/zephyrus-framework/framework
+## Install
+
+```json
+{
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require": {
+        "php": "^8.4",
+        "zephyrus-framework/core": "dev-dev"
+    },
+    "autoload": { "psr-4": { "App\\": "app/" } }
+}
+```
+
+Packagist serves `dev-dev`: no `repositories` entry. The core requires
+`ext-intl`, `ext-mbstring`, `ext-pdo`, `ext-sodium` and `ext-fileinfo`, and
+brings `latte/latte`, `tracy/tracy`, `symfony/yaml`, `vlucas/phpdotenv` and
+`phpmailer/phpmailer`. PostgreSQL needs `pdo_pgsql`.
 
 ## Bootstrap
 
-Applications are built with `ApplicationBuilder`:
+There is no framework `Kernel` base class and no `Application::run()`. The app
+writes a small bootstrap class of its own (a convention) that loads the
+configuration, builds the router, mounts middleware and calls `build()`.
+`Zephyrus\Core\Application` only turns a `Request` into a `Response`. This is
+`examples/zephyrus/app/Kernel.php`, which boots and serves as is:
 
 ```php
-$app = ApplicationBuilder::create()
-    ->withConfiguration($config, basePath: ROOT_DIR)
-    ->withRouter($router)
-    ->withControllerFactory(fn(string $class) => /* DI */)
-    ->withExceptionHandler(RouteNotFoundException::class, fn($e, $r) => Response::html('404', 404))
-    ->build();
-```
+namespace App;
 
-Configuration is loaded from YAML with typed sections:
+use Zephyrus\Core\Application;
+use Zephyrus\Core\ApplicationBuilder;
+use Zephyrus\Core\Config\Configuration;
+use Zephyrus\Http\Request;
+use Zephyrus\Rendering\LatteEngine;
+use Zephyrus\Routing\Router;
+use Zephyrus\Security\CsrfConfig;
+use Zephyrus\Security\CsrfMiddleware;
+use Zephyrus\Security\MaxBodySizeMiddleware;
+use Zephyrus\Security\SecureHeadersMiddleware;
+use Zephyrus\Session\SessionCsrfTokenManager;
+use Zephyrus\Session\SessionManager;
+use Zephyrus\Session\SessionMiddleware;
 
-```php
-$config = Configuration::fromYamlFile(ROOT_DIR . '/config.yml', [
-    'render' => RenderConfig::class,
-    'leaf'   => LeafConfig::class,   // custom sections register here
-]);
-```
-
-YAML supports `!env` tags for environment variables with fallback:
-`database_host: !env DB_HOST, localhost`.
-
-Production projects extend `Kernel` (or build a custom Application
-class), declare their own controller factory, register middlewares,
-and run `(new Application())->run();` from `public/index.php`.
-
-## Routing
-
-Routes are declared as PHP 8 attributes on controller methods:
-
-```php
-#[Get('/users')]
-public function index(): Response { }
-
-#[Get('/users/{id}', constraints: ['id' => '\d+'])]
-public function show(int $id): Response { }
-
-#[Post('/users', middlewares: ['auth'])]
-public function store(Request $request): Response { }
-```
-
-Available verbs: `#[Get]`, `#[Post]`, `#[Put]`, `#[Patch]`, `#[Delete]`,
-`#[Head]`, `#[Options]`.
-
-Class-level attributes: `#[Root('/prefix')]`, `#[Middleware('name')]`,
-`#[RequiresEnv('VAR', 'value')]`.
-
-Controller discovery (auto-scans the namespace):
-
-```php
-$router = (new Router())->discoverControllers(
-    namespace: 'App\\Controllers',
-    directory: ROOT_DIR . '/app/Controllers',
-);
-```
-
-Path parameters are auto-injected by name and type-coerced. Type
-mismatch returns 404.
-
-### Empirical: MODE-based controller scoping (one codebase, many entry points)
-
-`#[RequiresEnv('MODE', 'WEB')]` on a controller class makes it register
-**only when that env var matches**. This is how `immunity-app` ships
-one codebase that boots into three different entry points:
-
-```php
-namespace App\Controllers\Web;
-
-#[RequiresEnv('MODE', 'WEB')]
-abstract class Controller extends BaseController { use RenderResponses; }
-```
-
-```php
-namespace App\Controllers\Api\Public;
-
-#[Root('/v1')]
-#[RequiresEnv('MODE', 'API')]
-abstract class Controller extends BaseController {}
-```
-
-```php
-namespace App\Controllers\Api\Internal;
-
-#[Root('/api/v1')]
-#[RequiresEnv('MODE', 'WEB')]   // internal API ships in the WEB process
-abstract class Controller extends BaseController {}
-```
-
-```php
-namespace App\Controllers\Shared;
-
-class HealthController            // No #[RequiresEnv] — registers in EVERY mode
+final class Kernel
 {
-    #[Get('/health')]
-    public function ping(): Response { return Response::text('ok'); }
-}
-```
-
-Containerized services set `MODE=API`, `MODE=WEB`, `MODE=INDEXER`
-explicitly. **Default to `'WEB'` if unset** (Application bootstrap):
-
-```php
-if (!isset($_ENV['MODE']) && getenv('MODE') === false) {
-    $_ENV['MODE'] = 'WEB';
-    putenv('MODE=WEB');
-}
-```
-
-**Gotcha:** if you forget to set `MODE` in your container, the WEB
-tier's routes register instead of API routes — `/v1/...` returns 404.
-Add a `Shared\HealthController` with `#[Get('/health')]` to verify
-mode-aware deploys with a probe that works in every tier.
-
-## Controllers
-
-Extend `Controller` for JSON APIs or use the `RenderResponses` trait
-for HTML:
-
-```php
-final class PageController extends Controller
-{
-    use RenderResponses;
-
-    #[Get('/')]
-    public function index(): Response
+    public static function run(string $root): void
     {
-        return $this->render('home', ['title' => 'Home']);
-    }
-}
-```
+        $config = Configuration::fromYamlFile($root . '/config.yml');
 
-Convenience methods on `Controller`: `json()`, `created()`, `text()`,
-`noContent()`, `redirect()`, `abort()`, `validate()`.
-
-Lifecycle hooks: override `before(Request): ?Response` (guard /
-short-circuit) and `after(Request, Response): Response` (decorate).
-
-### Empirical: lazy service initialization
-
-`immunity-app` defers expensive service construction until first use
-within a request:
-
-```php
-final class DashboardController extends Controller
-{
-    private ?HeartbeatBroker $heartbeats = null;
-
-    #[Get('/dashboard/activity')]
-    public function index(Request $request): Response
-    {
-        $this->heartbeats ??= new HeartbeatBroker();
-        $rows = $this->heartbeats->listAllWithStats(60);
-        return Response::json($rows);
-    }
-}
-```
-
-The broker constructor opens a DB connection — null-coalescing assignment
-defers the connect until a route that needs it actually runs. In tests,
-inject a test double via the constructor instead.
-
-### Empirical: custom controller factory for render-engine injection
-
-Plain `new $class()` instantiation does not give controllers the
-template engine. Use `withControllerFactory`:
-
-```php
-$builder = $builder->withControllerFactory(function (string $class) use ($renderEngine): object {
-    $controller = new $class();
-    if (method_exists($controller, 'setRenderEngine')) {
-        $controller->setRenderEngine($renderEngine);
-    }
-    return $controller;
-});
-```
-
-If you add a controller that needs another dependency (a logger, an
-event bus), extend this factory. Pure `new()` won't inject it.
-
-## Request & Response
-
-Both are immutable value objects:
-
-```php
-// Request
-$request->method()                 // GET, POST, ...
-$request->uri()->path()            // /users/42
-$request->body()->get('name')      // form/JSON body
-$request->query()->get('page')     // query string
-$request->headers()->bearerToken() // Authorization header
-$request->cookies()->get('session')
-Request::fromGlobals()             // create from PHP globals
-
-// Response
-Response::json(['data' => $items], 200)
-Response::html($html, 200)
-Response::redirect('/login', 302)
-$response->withHeader('X-Custom', 'value')
-$response->withStatus(201)
-```
-
-### Empirical: cache headers per endpoint
-
-Public, frequently-fetched endpoints layer in revalidation:
-
-```php
-return Response::json(['items' => $items])
-    ->withHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=20');
-```
-
-Private/user-specific endpoints either skip the header or set
-`Cache-Control: no-store`. Don't reach for `no-store` reflexively;
-`max-age=0, must-revalidate` lets browsers reuse the response while
-revalidating it, which is usually what you want.
-
-## Middleware
-
-Implement `MiddlewareInterface`:
-
-```php
-class AuthMiddleware implements MiddlewareInterface
-{
-    public function process(Request $request, callable $next): Response
-    {
-        if (!$this->isAuthenticated($request)) {
-            return Response::json(['error' => 'Unauthorized'], 401);
-        }
-        return $next($request);
-    }
-}
-```
-
-### Empirical: named registration vs attribute application (the gotcha)
-
-The `#[Middleware('name')]` attribute *applies* a middleware that was
-**registered earlier under that name** in your Kernel/Application
-override. Adding the attribute without registering the name fails
-silently or crashes at routing time.
-
-```php
-// app/Models/Core/Application.php — registration
-final class Application extends Kernel
-{
-    protected function registerMiddleware(ApplicationBuilder $builder): void
-    {
-        $builder->withMiddleware(new SessionMiddleware(SessionConfig::fromArray([
-            'name'     => 'APP_SESSION',
-            'lifetime' => 0,
-            'sameSite' => 'Lax',
-            'secure'   => false,
-        ])));
-
-        // Named middlewares are referenced by attribute on controllers
-        $builder->registerMiddleware(
-            'admin',
-            new AuthGuardMiddleware(
-                new PredicateAuthGuard(static fn () => Session::hasAdmin()),
-            ),
+        // fromGlobals() does not read config.yml: pass the proxy settings yourself.
+        $request = Request::fromGlobals(
+            trustedProxies: $config->security->trustedProxies,
+            trustedHeaders: $config->security->trustedHeaders,
         );
+
+        self::application($root, $config)->handle($request)->send();
+    }
+
+    public static function application(string $root, Configuration $config): Application
+    {
+        $session = new SessionManager();
+        $tokens = new SessionCsrfTokenManager($session);
+
+        $views = new LatteEngine($root . '/app/Views', $root . '/cache/latte');
+        $views->getLatteEngine()->addFunction('csrfToken', $tokens->getToken(...));
+
+        $router = (new Router())->discoverControllers('App\\Controllers', $root . '/app/Controllers');
+
+        // The first middleware added runs outermost. Each declared security key
+        // (headers, max_body_size, csrf) must be enforced here or build() throws.
+        return ApplicationBuilder::create()
+            ->withConfiguration($config, basePath: $root)
+            ->withRouter($router)
+            ->withRenderEngine($views)
+            ->withMiddleware(new SecureHeadersMiddleware($config->security->headers))
+            ->withMiddleware(new MaxBodySizeMiddleware($config->security->maxBodySize))
+            ->withMiddleware(new SessionMiddleware($config->session, $session))
+            ->withMiddleware(new CsrfMiddleware($tokens, CsrfConfig::fromSecurityConfig($config->security)))
+            ->build();
     }
 }
 ```
 
+`public/index.php`:
+
 ```php
-// app/Controllers/Api/Internal/AdminController.php — application
-#[Root('/api/v1')]
-#[Middleware('admin')]
-final class AdminController extends BaseController
-{
-    #[Post('/admin/scenario/{name}')]
-    public function scenario(string $name): Response { /* ... */ }
-}
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+App\Kernel::run(dirname(__DIR__));
 ```
 
-Pattern: register globals via `withMiddleware()` (always run); register
-named via `registerMiddleware('name', ...)` (only run when an
-attribute references the name).
+What the builder does and does not do:
+
+- Every `with*()` returns a new builder. A call whose result is dropped mounts
+  nothing (gotcha 4): chain, or reassign `$builder = $builder->with...()`.
+- `withMiddleware()` mounts a global middleware: it runs on every request,
+  including 404 and 405 answers, outermost first. `registerMiddleware('name', $m)`
+  only names one; it runs on routes that reference the name.
+- `withRenderEngine()` injects the engine into every controller using
+  `RenderResponses`, including controllers built by `withControllerFactory()`.
+- `withConfiguration($config, basePath: $root)` wires localization (a relative
+  `locale_path` resolves against `basePath`). `build()` applies
+  `application.debug` (Tracy) and `localization.timezone`. Nothing under
+  `security:` or `session:` is applied for you: you mount the middleware, and
+  `build()` refuses to boot when a declared security key is not enforced.
+- The framework never reads `.env`. Load it yourself before the configuration:
+
+```php
+Dotenv\Dotenv::createImmutable($root)->safeLoad(); // the framework never reads .env itself
+$config = Configuration::fromYamlFile($root . '/config.yml');
+```
 
 ## Configuration
 
-`config.yml` at project root, loaded via `Configuration::fromYamlFile`:
+Five built-in sections. Keys are accepted in snake_case or camelCase, one
+spelling per key. A key these sections do not know stops the boot with the
+closest accepted key (gotcha 1). Besides the keys below, they accept session
+`cookie_path`, security `trusted_headers`, localization `date_format`,
+`time_format`, `datetime_format` and `grouping_separator`, and database
+`charset`, `ssl_mode`, `ssl_root_cert` and `column_cache_version`.
 
 ```yaml
 application:
-  environment: !env APP_ENV, dev
-  debug: !env APP_DEBUG, true
+  environment: !env APP_ENV, dev   # prod/production, stage/staging, test/testing, dev/development/local
+  debug: !env APP_DEBUG, false     # forced off in production and staging
 
 session:
-  name: "APP_SESSION"
-  lifetime: 0
+  name: APP_SESSION
+  lifetime: 0                      # seconds; 0 ends with the browser
+  idle_timeout: 1800
   http_only: true
-  secure: false
-  same_site: "Lax"
-  cookie_path: "/"
+  secure: auto                     # true, false or auto (secure when the request is https)
+  same_site: Lax                   # Strict, Lax or None (None requires secure)
 
 security:
   force_https: false
-  allowed_hosts: []
-  max_body_size: 10485760
+  allowed_hosts: []                # host names only: no port, no scheme
+  max_body_size: 2097152           # bytes, no unit suffix
+  trusted_proxies: []              # addresses or CIDR network addresses
   csrf:
     enabled: true
-    auto_html: false
+    exceptions: ['#^/webhooks/#']  # quoted, anchored
   encryption:
-    key: !env ENCRYPTION_KEY
+    key: !env APP_ENCRYPTION_KEY
+  headers:
+    x_frame_options: DENY
+    hsts_max_age: 31536000
 
 localization:
-  locale: "en"
-  supported_locales: ["en"]
-  locale_path: "locale"
-  timezone: !env APP_TIMEZONE, UTC
+  locale: en
+  supported_locales: [en, fr]
+  locale_path: locale              # relative to the basePath given to withConfiguration()
+  timezone: America/Toronto
+  currency: CAD
 
 database:
   host: !env DB_HOST, localhost
   port: !env DB_PORT, 5432
   database: !env DB_NAME, app
-  username: !env DB_USERNAME, dev
-  password: !env DB_PASSWORD, dev
-  charset: "utf8"
-
-render:
-  engine: latte
-  directory: app/Views
-  cache: cache/latte
-  mode: always
+  username: !env DB_USERNAME, app
+  password: !env DB_PASSWORD
 ```
 
-### Custom typed config sections
+- `!env NAME, default` reads `$_ENV` and the process environment, never
+  `$_SERVER`. Unset without a default, it reads as `null`.
+- Booleans accept only `true`/`false`, `1`/`0`, `on`/`off`, `yes`/`no`.
+- Read values through typed properties: `$config->security->maxBodySize`,
+  `$config->session->name`, `$config->database` (null when the section is
+  absent). After `build()`, the `config('security', 'maxBodySize')` helper
+  reads the same values.
+- `security.headers` keys: `xFrameOptions`, `xContentTypeOptions`,
+  `referrerPolicy`, `xssProtection`, `hstsMaxAge`, `hstsIncludeSubdomains`,
+  `csp`, `permissionsPolicy` (or snake_case).
+- Localization: `locale_path: locale` reads every `locale/en/*.json` file into
+  one catalog; `localize('greeting', ['name' => 'Ada'])` fills `{name}`, and a
+  missing key returns the key itself.
 
-Subclass `ConfigSection` to add typed sections:
+Any other top-level key is ignored unless you register a section for it
+(gotcha 2). Your own section:
 
 ```php
-final class MyConfig extends ConfigSection
+final class BillingConfig extends ConfigSection
 {
-    public readonly string $apiKey;
-    public readonly bool   $debugMode;
+    public readonly string $provider;
+    public readonly int $trialDays;
 
     public static function fromArray(array $values): static
     {
-        $instance = new static($values);
-        $instance->apiKey    = $instance->getString('apiKey', '');
-        $instance->debugMode = $instance->getBool('debugMode', false);
-        return $instance;
+        $section = new static($values);
+        $section->provider = $section->getString('provider', 'none');
+        $section->trialDays = $section->getInt('trialDays', 30); // trial_days in YAML
+        return $section;
+    }
+}
+
+$config = Configuration::fromYamlFile($root . '/config.yml', ['billing' => BillingConfig::class]);
+$billing = $config->section('billing'); // a BillingConfig
+```
+
+A custom section does not refuse unknown keys: a misspelled key there silently
+takes the default.
+
+## Security wiring
+
+Declaring a key under `security:` is a promise. `build()` refuses to boot
+unless a middleware passed to `withMiddleware()` enforces it with the same
+value (gotcha 3):
+
+| Declared | Mount globally |
+| --- | --- |
+| `force_https: true` | `new ForceHttpsMiddleware()` |
+| non-empty `allowed_hosts` | `new AllowedHostsMiddleware($config->security->allowedHosts)` |
+| `max_body_size` above 0 | `new MaxBodySizeMiddleware($config->security->maxBodySize)` |
+| `headers` | `new SecureHeadersMiddleware($config->security->headers)` |
+| `csrf` (enabled) | `new CsrfMiddleware($tokens, CsrfConfig::fromSecurityConfig($config->security))` |
+
+- Only declared keys are checked. Leaving `max_body_size` out means no limit
+  and no check.
+- A middleware registered under a route name, or wrapped inside another
+  middleware, does not count. When a protection really lives elsewhere (a
+  reverse proxy, a wrapping middleware), say so:
+  `withAcknowledgedSecurityKeys(['csrf'])` (names: `forceHttps`,
+  `allowedHosts`, `csrf`, `maxBodySize`, `headers`, bare or `security.`-prefixed).
+- Not checked: `trusted_proxies`, `session`, `encryption`. Mount
+  `SessionMiddleware` yourself, and pass the proxies to `Request::fromGlobals()`.
+
+## Routing
+
+```php
+#[Root('/api/projects')]
+#[Middleware('auth')]
+final class ProjectController extends Controller
+{
+    #[Get('/')]
+    public function index(Request $request): Response
+    {
+        $page = (int) $request->query('page', 1);
+        return $this->json(['page' => $page]);
+    }
+
+    #[Get('/{id}', constraints: ['id' => '\d+'], name: 'projects.show')]
+    public function show(int $id, int $userId): Response
+    {
+        return $this->json(['id' => $id, 'viewer' => $userId]);
+    }
+
+    #[Post('/')]
+    public function store(Request $request): Response
+    {
+        return $this->created(['name' => $request->body()->get('name')]);
+    }
+
+    #[Delete('/{id}', constraints: ['id' => '\d+'])]
+    public function destroy(int $id): Response
+    {
+        return $this->noContent();
     }
 }
 ```
 
-Register when loading:
-`Configuration::fromYamlFile($path, ['my_section' => MyConfig::class])`.
+- Attributes live in `Zephyrus\Routing\Attribute\` (singular): `Get`, `Post`,
+  `Put`, `Patch`, `Delete`, `Head`, `Options`, `Route`, `Root`, `Middleware`,
+  `MiddlewareGroup`, `RequiresEnv`, `WithoutMiddleware`.
+- Action parameters resolve in order: a `Request` type, a route placeholder of
+  the same name, a request attribute of the same name (here `$userId`, set by
+  the `auth` middleware), then the declared default. A value that does not
+  cast to the declared type answers 404. A constraint is a regex fragment.
+- A static route beats a parameterized one whatever the order (`/users/me`
+  wins over `/users/{id}`). A GET route also answers HEAD; a wrong method
+  answers 405 with `Allow`. A trailing slash is tolerated.
+- `route('projects.show', ['id' => 12], ['tab' => 'files'])` builds
+  `/api/projects/12?tab=files` (in PHP and in Latte).
+- `#[Root]`, `#[Middleware]` and `#[RequiresEnv]` on a parent class apply to its
+  subclasses. Route attributes on a parent's methods do not (gotcha 14).
+- `discoverControllers()` registers every concrete class under the directory
+  whose namespace matches; a wrong directory or namespace registers nothing,
+  silently (gotcha 15).
 
-YAML keys are normalized: `snake_case` becomes `camelCase` in
-`getString()` etc.
-
-### Empirical: `DATABASE_URL` parsing for cloud deploys
-
-`immunity-app` parses Fly/Heroku-style `DATABASE_URL` once at boot and
-sets `$_ENV` vars so `config.yml` `!env` directives pick them up:
+One codebase, several processes: `#[RequiresEnv]` registers a class's routes
+only when a variable matches (exactly, case-sensitive):
 
 ```php
-public static function applyDatabaseUrl(): void
+#[Root('/v1')]
+#[RequiresEnv('MODE', 'api')]
+abstract class ApiController extends Controller
 {
-    $url = $_ENV['DATABASE_URL'] ?? getenv('DATABASE_URL') ?: null;
-    if (!is_string($url) || $url === '') return;
+}
 
-    $parts = parse_url($url);
-    $set = static function (string $key, ?string $value): void {
-        if ($value !== null && $value !== '' &&
-            !isset($_ENV[$key]) && getenv($key) === false) {
-            $_ENV[$key] = $value;
-            putenv("$key=$value");
+final class StatusController extends ApiController
+{
+    #[Get('/status')]
+    public function status(): Response
+    {
+        return $this->json(['ok' => true]);
+    }
+}
+```
+
+With `MODE` unset, `GET /v1/status` is not registered (404). A controller
+without `#[RequiresEnv]`, such as a `/health` probe, registers in every process.
+
+## Request and response
+
+```php
+$request = Request::fromArray(
+    'POST',
+    '/api/projects?page=2',
+    body: ['name' => 'Atlas'],
+    headers: ['Authorization' => 'Bearer abc123', 'Content-Type' => 'application/x-www-form-urlencoded'],
+    cookies: ['theme' => 'dark'],
+);
+$request->method;                   // 'POST' (a property)
+$request->path();                   // '/api/projects'
+$request->query('page', 1);         // '2'; $request->query is the whole array
+$request->body()->get('name');      // 'Atlas' (form or JSON body)
+$request->body()->all();            // ['name' => 'Atlas']
+$request->headers()->bearerToken(); // 'abc123'
+$request->cookies()->get('theme');  // 'dark'
+$request->attribute('userId');      // null: set by a middleware through withAttribute()
+```
+
+```php
+$response = Response::json(['ok' => true], 201)
+    ->withHeader('Cache-Control', 'no-store');
+$response->getHeader('cache-control');   // 'no-store' (any case)
+$response->headers['Cache-Control'];     // null: names are stored lowercased
+$back = Response::localRedirect('//evil.example/phish', '/'); // off-site target: redirects to '/'
+```
+
+`Controller` (optional base class) adds `json()`, `created()`, `text()`,
+`noContent()`, `respond()`, `redirect()`, `localRedirect()`, `abort()`,
+`abortJson()` and `validate()`, plus `before()`/`after()` hooks; an override of
+`before()` must call `parent::before($request)` or `$this->request` stays
+unset. Plain classes work as controllers too. `withHeader()` refuses control
+characters; check untrusted values with `Response::isValidHeaderValue()`, and
+redirect to user-supplied targets with `localRedirect()`.
+
+## Middleware
+
+```php
+final class RequireUserMiddleware implements MiddlewareInterface
+{
+    public function process(Request $request, callable $next): Response
+    {
+        $userId = $request->headers()->get('X-User-Id'); // stand-in for a session lookup
+        if ($userId === null) {
+            return Response::json(['error' => 'Sign in first.'], 401);
         }
-    };
-    $set('DB_HOST',     $parts['host']    ?? null);
-    $set('DB_PORT',     isset($parts['port']) ? (string) $parts['port'] : null);
-    $set('DB_USERNAME', $parts['user']    ?? null);
-    $set('DB_PASSWORD', $parts['pass']    ?? null);
-    $set('DB_NAME',     ltrim($parts['path'] ?? '', '/'));
-}
-```
-
-Existing `DB_*` vars take precedence — useful for local overrides.
-
-## Database (no ORM, no migrations)
-
-Zephyrus does **raw SQL with parameter binding**. `immunity-app`'s
-pattern is **Broker / Service / Entity**.
-
-### Db singleton + connection
-
-```php
-final class Db
-{
-    private static ?Database $current = null;
-
-    public static function current(): Database
-    {
-        if (self::$current === null) {
-            $config = App::getConfiguration()->section('database');
-            self::$current = self::fromConfig($config);
-            self::registerTypes(self::$current);
-        }
-        return self::$current;
-    }
-
-    private static function registerTypes(Database $db): void
-    {
-        // DECIMAL columns stay strings — preserves money precision
-        $stringPassthrough = static fn (string $v): string => $v;
-        $db->registerTypeConversion('NUMERIC',    $stringPassthrough);
-        $db->registerTypeConversion('DECIMAL',    $stringPassthrough);
-        $db->registerTypeConversion('NEWDECIMAL', $stringPassthrough);
-    }
-}
-```
-
-**`(float)` on a money string loses precision.** Keep DECIMAL as string;
-convert only for display via a Formatter helper.
-
-### Broker base class with bytea sanitization
-
-PDO_PGSQL returns `bytea` columns as PHP **stream resources**, not
-strings. The framework's type converter doesn't handle resources. Wrap
-selects:
-
-```php
-abstract class Broker extends ZephyrusBroker
-{
-    public function __construct(?Database $db = null)
-    {
-        parent::__construct($db ?? Db::current());
-    }
-
-    protected function select(string $sql, array $params = []): array
-    {
-        $rows = parent::select($sql, $params);
-        foreach ($rows as $row) self::sanitize($row);
-        return $rows;
-    }
-
-    protected function selectOne(string $sql, array $params = []): ?stdClass
-    {
-        $row = parent::selectOne($sql, $params);
-        if ($row !== null) self::sanitize($row);
-        return $row;
-    }
-
-    private static function sanitize(stdClass $row): void
-    {
-        foreach ($row as $key => $value) {
-            if (is_resource($value)) {
-                $contents = stream_get_contents($value);
-                $row->$key = $contents === false ? '' : $contents;
-            }
-        }
-    }
-}
-```
-
-### Broker / Service / Entity layering
-
-```php
-// Broker — raw SQL only, returns stdClass
-final class EntryBroker extends Broker
-{
-    public function findByImmId(string $immId): ?stdClass
-    {
-        return $this->selectOne(
-            'SELECT * FROM antibody.entry WHERE imm_id = ?',
-            [$immId],
-        );
+        return $next($request->withAttribute('userId', (int) $userId));
     }
 }
 
-// Entity — typed value object, knows its bytea columns
-final class Entry extends Entity
-{
-    public int    $id;
-    public string $imm_id;
-    public string $keccak_id;     // bytea
-    public ?string $flavor = null;
-
-    public static function byteaProperties(): array
-    {
-        return ['keccak_id', 'context_hash', 'evidence_cid'];
-    }
-}
-
-// Service — owns a Broker, hydrates to Entity
-final readonly class EntryService
-{
-    public function __construct(
-        private EntryBroker $broker = new EntryBroker(),
-    ) {}
-
-    public function findByImmId(string $immId): ?Entry
-    {
-        $row = $this->broker->findByImmId($immId);
-        return $row === null ? null : Entry::build($row);
-    }
-}
+$builder = $builder->registerMiddleware('auth', new RequireUserMiddleware());
 ```
 
-**Gotcha:** if you add a bytea column to the DB but forget to add it to
-`byteaProperties()`, `Entity::build()` may set a PHP resource directly
-on a typed property and downstream code breaks.
+`#[Middleware('auth')]` on a class or method applies it. Ready-made guards:
+`new AuthGuardMiddleware(new PredicateAuthGuard(fn (Request $r): bool => ...))`,
+`HeaderTokenGuard`, `IpAllowlistGuard`, composable with `AllAuthGuard`,
+`AnyAuthGuard` and `NotAuthGuard` (refusal: 401 JSON `{"error":"Unauthorized"}`).
+`$router->middlewareGroup('admin', ['auth', 'audit'])` names a list, expanded
+when routes are added: declare groups before `discoverControllers()` (gotcha 17).
 
-### Schema as single source of truth
+## Sessions, CSRF and flash messages
 
-`sql/0-init-database.sql` is the schema. Test bootstrap drops the test
-DB and rebuilds from this file fresh per session. **No migrations.**
-Add a table → update the SQL → re-run tests. The DDL is the spec.
+`SessionMiddleware` starts the session (and registers it for `session()` and
+`Flash`). Mount it before `CsrfMiddleware`, as in the bootstrap above. Without
+it, `session([...])` writes and flash messages are dropped silently (gotcha 19).
+Tests and CLI scripts use array storage: `new SessionManager([])`.
 
-### Keyset (cursor) pagination
-
-```php
-#[Get('/antibodies')]
-public function index(Request $request): Response
-{
-    $beforeId = $request->query('before_id');
-    $beforeId = $beforeId === null ? null : (int) $beforeId;
-
-    $items = $this->entries->findFiltered(/* ... */, $limit, $beforeId);
-
-    return Response::json([
-        'next_cursor' => $items === [] ? null : end($items)->id,
-        'items'       => $items,
-    ]);
-}
-```
-
-```sql
-SELECT * FROM entry
-WHERE (? IS NULL OR id < ?)
-ORDER BY id DESC
-LIMIT ?
-```
-
-Offset pagination is O(N) on the database. Keyset is O(log N). For any
-table that grows beyond a few thousand rows, use keyset.
-
-## Localization
-
-```php
-$loader     = new JsonLocaleLoader(ROOT_DIR . '/locale');
-$translator = new Translator($loader, 'en');
-
-$translator->trans('welcome', ['name' => 'World'], 'fr');
-
-// Global function (after App::setTranslator)
-localize('welcome', ['name' => 'World']);
-```
-
-JSON files at `locale/{lang}/strings.json` with nested keys via dots:
-`localize('nav.home')`. Missing keys fall back to the key itself.
-
-## Rendering (Latte)
-
-Templates use [Latte](https://latte.nette.org/) (`.latte` files):
+There is no automatic token injection: render the field in every form.
 
 ```latte
-{layout 'layouts/main.latte'}
-{block content}
-<h1>{$title}</h1>
-{/block}
+<input type="hidden" name="_csrf_token" value="{csrfToken()}">
 ```
 
-Config:
+JavaScript sends the same token in the `X-CSRF-Token` header. A refusal is a
+403: `text/plain` when `Accept` lists `text/html`, JSON otherwise. To render
+your own page:
+
+```php
+$builder = $builder->withMiddleware(new CsrfMiddleware(
+    $tokens,
+    CsrfConfig::fromSecurityConfig($config->security),
+    onFailure: fn (Request $request, CsrfFailure $failure): ?Response
+        => Response::html('<h1>This page expired. Reload it and try again.</h1>', 403),
+));
+```
+
+Exempt a webhook path with `security.csrf.exceptions` (anchored and quoted,
+gotcha 5). `#[WithoutMiddleware(CsrfMiddleware::class)]` is refused.
+`Flash::success('Saved.')` before a redirect, `Flash::readAll()` after it
+(`->success`, `->error`, `->warning`, `->info`).
+
+## Views
+
+Latte escapes output; the `PhpEngine` does not (use `e()`). Mount an engine with
+`withRenderEngine()` and render from a controller that uses `RenderResponses`:
+`$this->render('home', ['name' => $name], 422)` renders
+`app/Views/home.latte`. Without an engine, every render is a 500 (gotcha 13).
+Instead of building the engine by hand, `render:` can configure it once
+registered:
 
 ```yaml
 render:
-  engine: latte
+  engine: latte          # or php
   directory: app/Views
   cache: cache/latte
-  mode: always
 ```
-
-Extensions inject global template variables via `beforeRender()`. Add
-custom Latte functions in `Application::__construct()` after the
-engine is built (`$engine->addFunction('format', ...)`).
-
-### Empirical: Asset() helper for cache-busting
 
 ```php
-App::setAsset(new Asset(ROOT_DIR . '/public'));
+$config = Configuration::fromYamlFile($root . '/config.yml', ['render' => RenderConfig::class]);
+$views = $config->section('render')->createEngine($root); // LatteEngine or PhpEngine
+App::setAsset(new Asset($root . '/public'));
 ```
 
-```latte
-<link rel="stylesheet" href="{asset('/stylesheets/app.css')}">
-{* → /stylesheets/app.css?v=<sha1-of-file-contents> *}
-```
-
-Compute SHA-1 of file contents, append as `?v=<hash>` query param.
-Browser caches forever; file change auto-invalidates. Pair with
-long-lived `Cache-Control` in `.htaccess`/server config.
+With an `Asset` set, `{asset('/css/app.css')}` renders a cache-busting URL
+such as `/css/app.css?v=145ccd37` (the first 8 hex characters of the file's
+md5); a missing file is returned unchanged. Latte templates can call `route()`
+and other PHP functions directly; add your own through
+`$latteEngine->getLatteEngine()->addFunction()`.
 
 ## Validation
 
 ```php
-$form = FormValidator::create()
-    ->field('email', Rules::required(), Rules::email())
-    ->field('age',   Rules::required(), Rules::integer(), Rules::min(18));
-
+$form = new FormValidator([
+    'email' => [Rules::required(), Rules::email()],
+    'age' => [Rules::required(), Rules::integer(), Rules::min(18)],
+]);
 $errors = $form->validate($request->body()->all());
-if (!$errors->isEmpty()) {
+if ($errors->hasErrors()) {
     return $this->json(['errors' => $errors->toArray()], 422);
+}
+```
+
+`ErrorBag` also has `hasErrorsFor()`, `errorsFor()`, `firstFor()`,
+`failingFields()` and `allMessages()`. For an API, `validateOrFail()` throws and
+the kernel answers 422:
+
+```php
+(new FormValidator(['email' => [Rules::required(), Rules::email()]]))
+    ->validateOrFail($request->body()->all()); // throws ValidationException: the kernel answers 422
+```
+
+That 422 is `{"errors":{...}}` for `Accept: application/json` but the bare text
+`Unprocessable Entity` for a browser, so HTML forms use `validate()` and
+re-render. `Rules::integer()` accepts the string `'20'` and refuses `true`.
+
+## Errors and debugging
+
+A thrown exception becomes a fixed answer: 404 for no route or a parameter that
+does not cast, 405, 422 for `ValidationException`, otherwise 500
+`Internal Server Error` (JSON when asked). The message never reaches the client,
+and without an event dispatcher it reaches nobody (gotcha 13). Report and
+customize:
+
+```php
+$events = new EventDispatcher();
+$events->addListener(ExceptionEvent::class, function (ExceptionEvent $event): void {
+    if (!$event->isRoutingFailure()) { // skip 404 and 405
+        error_log((string) $event->getException()); // or your error tracker
+    }
+});
+
+$builder = $builder
+    ->withEventDispatcher($events)
+    ->withExceptionHandler(
+        RouteNotFoundException::class,
+        fn (\Throwable $e, Request $request): Response => Response::html('<h1>Page not found</h1>', 404),
+    );
+```
+
+A handler may return `null` to keep the built-in answer. To let Tracy show an
+error in development, rethrow the same object:
+
+```php
+$builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwable $e, Request $request) use ($debug): ?Response {
+    if ($debug) {
+        throw $e; // the same object: handle() rethrows it, so Tracy can show it
+    }
+    error_log($e::class . ': ' . $e->getMessage());
+    return Response::html('<h1>Something went wrong</h1>', 500);
+});
+```
+
+A handler that throws anything else yields the fixed 500. With
+`application.debug: true`, Tracy only shows itself to loopback clients. Behind
+Docker the browser arrives from the bridge gateway:
+`withDebugClientAllowlist('secret@172.17.0.1')` plus a `tracy-debug=secret`
+cookie. In `production` and `staging`, debug is forced off (gotcha 9) unless
+you call `withProductionDebugAcknowledged()`.
+
+## Database
+
+```php
+$config = Configuration::fromYamlFile($root . '/config.yml');
+$db = Database::fromConfig($config->database);
+```
+
+PostgreSQL only. `Database` has `select`, `selectOne`, `selectValue`,
+`selectInt`, `selectString`, `selectBool`, `selectFloat`, `count`, `exists`,
+`paginate`, `execute`, `insert`, `insertGetId`, `update`, `delete`,
+`transaction` (savepoints when nested; the callback receives the `Database`)
+and `pdo()`. Parameters are bound by type (`null`, booleans, `DateTimeInterface`,
+`BackedEnum`, `Binary` for bytea); arrays are refused. Rows come back as
+`stdClass` with integers, floats, booleans, PostgreSQL arrays as PHP arrays and
+JSON/JSONB decoded.
+
+The Broker/Service/Entity split is a convention of the apps built on Zephyrus
+(Agreely uses it under `app/Models/{Domain}/{Brokers,Services,Entities}`), not
+something the framework enforces. `Broker` and `Entity` are framework base
+classes; the Service is a plain class that calls the broker and hydrates
+entities. Raw SQL lives in brokers:
+
+```php
+final class ProjectBroker extends Broker
+{
+    public function findById(int $id): ?stdClass
+    {
+        return $this->selectOne('SELECT * FROM project WHERE id = ?', [$id]);
+    }
+
+    public function insert(string $name, string $budget): int
+    {
+        return (int) $this->insertRowGetId(
+            'INSERT INTO project (name, budget) VALUES (?, ?) RETURNING id',
+            [$name, $budget],
+        );
+    }
+}
+
+final class Project extends Entity
+{
+    public int $id;
+    public string $name;
+    public string $budget;
+    public array $tags;
+    public bool $archived;
+}
+```
+
+`new ProjectBroker($db)`, then `Project::build($row)` (`buildArray($rows)` for
+lists) casts each column to the property's declared type, maps backed enums
+with `from()` and nested `Entity` properties, and `json_encode()` skips
+unassigned properties. Keep money exact before it reaches an entity (gotcha 23):
+
+```php
+$db->registerTypeConversion('NUMERIC', static fn (string $value): string => $value); // keep money exact
+```
+
+## Mail
+
+Register `'mailer' => MailerConfig::class` (keys `smtp.host`, `smtp.port`,
+`smtp.username`, `smtp.password`, `smtp.encryption`, `from.address`,
+`from.name`):
+
+```php
+try {
+    (new Mailer($config->section('mailer')))
+        ->to('ada@example.com')
+        ->subject('Welcome')
+        ->text('Hello Ada')
+        ->send();
+} catch (MailerException $e) {
+    error_log($e->failure->value . ': ' . $e->transportMessage()); // the message itself carries no address or SMTP text
 }
 ```
 
 ## Testing
 
-PHPUnit 11 (`vendor/bin/phpunit`). Two test suites typical:
-
-```xml
-<testsuites>
-  <testsuite name="unit">
-    <directory>tests/Unit</directory>
-  </testsuite>
-  <testsuite name="integration">
-    <directory>tests/Integration</directory>
-  </testsuite>
-</testsuites>
-
-<php>
-  <env name="APP_ENV" value="testing" force="true"/>
-  <env name="DB_NAME" value="app_test" force="true"/>
-</php>
-```
-
-### Empirical: bootstrap rebuilds the DB
+The application handles a `Request` in-process, so tests need no server:
 
 ```php
-// tests/bootstrap.php
-$adminPdo = new PDO("pgsql:host=$host;port=$port;dbname=postgres", $user, $pass);
-$adminPdo->exec("DROP DATABASE IF EXISTS $testDbName WITH (FORCE)");
-$adminPdo->exec("CREATE DATABASE $testDbName");
+$app = Kernel::application($root, Configuration::fromYamlFile($root . '/config.yml'));
 
-$testPdo = new PDO("pgsql:host=$host;port=$port;dbname=$testDbName", $user, $pass);
-$testPdo->exec(SqlLoader::load(ROOT_DIR . '/sql/0-init-database.sql'));
+$response = $app->handle(Request::fromArray('GET', '/api/hello/ada'));
+assert($response->status === 200);
+assert(json_decode($response->body, true) === ['message' => 'Hello, ada']);
 
-$GLOBALS['TEST_DATABASE_CONFIG'] = $testConfig;
+$refused = $app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada']));
+assert($refused->status === 403); // no CSRF token
 ```
 
-### Empirical: integration tests wrap each test in a transaction
+`Request::fromArray()` takes the decoded body in `body:`; it does not decode a
+JSON `rawBody:` (gotcha 21). `App` holds per-request statics
+(`App::reset()` clears them between tests).
+
+## Gotchas, each with its repro
+
+Every repro below was run on `071064e`: the input, then the observed result.
+
+**1. A misspelled section or key stops the boot.** Fix the spelling; keep one
+spelling per key.
+
+```text
+in:  sesion:
+       name: APP
+out: ConfigurationException: Configuration key 'sesion' is not a known section: did you mean "session"? A section of your own needs a factory registered under its name in the $sectionFactories argument of the Configuration factories.
+in:  session:
+       samesite: Lax
+out: ConfigurationException: Configuration section 'session' field 'samesite' is an unknown key: did you mean "sameSite"?
+in:  security: { max_body_size: 10, maxBodySize: 10 }
+out: ConfigurationException: Configuration section 'security' sets both 'maxBodySize' and 'max_body_size': keep one.
+```
+
+**2. An unregistered section is ignored silently.** `render:`, `mailer:` or
+your own `billing:` do nothing until registered through the second argument of
+`Configuration::fromYamlFile()`.
+
+```text
+in:  render: { engine: latte } and project: { name: x }, loaded without factories
+out: hasSection('render') === false, hasSection('project') === false
+in:  billing: { trial_dayz: 14 } with ['billing' => BillingConfig::class]
+out: trialDays = 30 (the typo takes the default, no error)
+```
+
+**3. A declared security key without its middleware stops the boot.**
+
+```text
+in:  security: { max_body_size: 1048576, csrf: { enabled: true } }, build() with no middleware
+out: ConfigurationException: Configuration declares security settings that this application does not enforce as declared:
+       - security.csrf is not enforced as declared: mount new Zephyrus\Security\CsrfMiddleware(...) globally with withMiddleware(), built from the configuration's security through CsrfConfig::fromSecurityConfig()
+       - security.maxBodySize is not enforced as declared: mount new Zephyrus\Security\MaxBodySizeMiddleware(...) globally with withMiddleware(), built from the configuration's security->maxBodySize
+in:  max_body_size: 1000 with new MaxBodySizeMiddleware(5000)
+out: ... carries a looser limit (5000 bytes) than security.maxBodySize (1000 bytes); give it a positive limit no larger than security.maxBodySize
+in:  csrf.exceptions declared, CsrfMiddleware built with new CsrfConfig()
+out: ... the global Zephyrus\Security\CsrfMiddleware does not exclude "#^/webhooks/#", which security.csrf.exceptions lists; remove it from security.csrf.exceptions, or build the middleware with CsrfConfig::fromSecurityConfig()
+in:  headers declared, SecureHeadersMiddleware(SecureHeadersConfig::defaults())
+out: ... the global Zephyrus\Security\SecureHeadersMiddleware carries another configuration; build the middleware from the configuration's security->headers
+in:  withAcknowledgedSecurityKeys(['max_body_size'])
+out: InvalidArgumentException: Unknown security key "max_body_size". Accepted names: forceHttps, allowedHosts, csrf, maxBodySize, headers, each short or prefixed with "security.". Did you mean "maxBodySize"?
+```
+
+**4. A dropped builder clone mounts nothing.** The first line below gets the
+same `security.maxBodySize is not enforced as declared` refusal as gotcha 3:
 
 ```php
-abstract class IntegrationTestCase extends TestCase
-{
-    protected Database $db;
-
-    protected function setUp(): void
-    {
-        $config = $GLOBALS['TEST_DATABASE_CONFIG'];
-        $this->db = Db::fromConfig($config);
-        $this->db->pdo()->beginTransaction();
-    }
-
-    protected function tearDown(): void
-    {
-        if ($this->db->pdo()->inTransaction()) {
-            $this->db->pdo()->rollBack();
-        }
-    }
-}
+$builder->withMiddleware(new MaxBodySizeMiddleware($config->security->maxBodySize)); // result dropped
+$builder = $builder->withMiddleware(new MaxBodySizeMiddleware($config->security->maxBodySize)); // mounted
 ```
 
-Each test is atomic; DB state resets between tests without rebuilding
-the schema. Tests run fast, isolated, and order-independent.
+**5. CSRF exemptions must be quoted and anchored.** An unquoted `#` starts a
+YAML comment.
 
-## Production patterns from `immunity-app` (cheat sheet)
+```text
+in:  exceptions:
+       - #^/webhooks/#
+out: ConfigurationException: Configuration section 'security' field 'csrfExceptions[0]' has invalid value null: each entry must be a non-empty string; quote a pattern that starts with "#" in YAML.
+in:  exceptions: ['#/webhooks#']  (then CsrfConfig::fromSecurityConfig())
+out: InvalidArgumentException: security.csrf.exceptions[0] must start with "^" so it cannot match in the middle of a path: #/webhooks# (expected a shape such as #^/webhooks/#).
+```
 
-The decentralized threat-intel SDK at `www/immunity-app` is the
-canonical Zephyrus reference. Patterns it codifies:
+**6. Security values are strict.**
 
-1. **Three-mode codebase, single Application.** WEB / API / INDEXER all
-   share `app/`. `#[RequiresEnv('MODE', 'X')]` on controller classes
-   gates which routes register per process.
-2. **Default `MODE=WEB`** in single-process local dev. Containers set
-   it explicitly.
-3. **Named middleware registration** in `Application::registerMiddleware`,
-   applied via `#[Middleware('name')]` on controllers.
-4. **`Db::current()` singleton** with type conversions for
-   NUMERIC/DECIMAL → string (money precision).
-5. **`DATABASE_URL` parser** in `Db::applyDatabaseUrl()` for Fly/Heroku
-   deploys.
-6. **PostgreSQL bytea sanitization** in a custom `Broker` base class.
-7. **Broker / Service / Entity layering** with `Entity::byteaProperties()`
-   to declare which columns are bytea.
-8. **Lazy service init** in controllers via null-coalescing assignment.
-9. **Custom controller factory** for render-engine injection (and any
-   future cross-cutting deps).
-10. **Keyset pagination** with `before_id` cursor in query string and
-    `next_cursor` in response.
-11. **Cache headers per endpoint** — public/short-TTL on list endpoints,
-    `no-store` on private data, none by default.
-12. **Tier-aware sessions** (e.g. `Session::hasAdmin()` implies
-    `hasJudge()`) with custom helper, gated by middleware OR in-handler
-    check when middleware-only granularity isn't enough.
-13. **Schema in `sql/0-init-database.sql`** as single source of truth;
-    no migrations.
-14. **Test bootstrap drops + rebuilds the test DB** fresh per session,
-    integration tests wrap in transactions.
-15. **`SqlLoader::load(path)`** to ingest large SQL files at boot.
+```text
+in:  max_body_size: 2M
+out: ConfigurationException: Configuration section 'security' field 'max_body_size' has invalid value "2M": must be a number of bytes, for example 2097152 (no unit suffix).
+in:  allowed_hosts: [localhost:8080]
+out: ConfigurationException: Configuration section 'security' field 'allowedHosts[0]' has invalid value "localhost:8080": ports are not matched: list "localhost" only.
+in:  allowed_hosts: ~
+out: ConfigurationException: Configuration section 'security' field 'allowedHosts' has invalid value null: an empty list is written [].
+in:  csrf: true
+out: ConfigurationException: Configuration section 'security' field 'csrf' must be a mapping, such as csrf: { enabled: false }.
+```
 
-## Conventions
+**7. Automatic CSRF token injection is gone.** Delete `auto_html` and render the
+hidden field (see Sessions).
 
-- Controllers in `app/Controllers/` with `App\Controllers` namespace
-- Views in `app/Views/` as `.latte` files
-- Models / domain logic in `app/Models/{Domain}/{Brokers,Services,Entities}/`
-- Config in `config.yml` at project root
-- Locale files in `locale/{lang}/*.json`
-- SQL schema in `sql/0-init-database.sql`
-- Use `ROOT_DIR` constant for absolute paths
-- All HTTP objects are immutable; use `with*()` to create modified copies
-- Route parameters are type-coerced automatically; mismatch returns 404
-- **No ORM, no migrations** — raw SQL + Broker, schema as DDL file
-- **Default to PostgreSQL** — bytea sanitization, NUMERIC type
-  conversion, and the `DATABASE_URL` parser are PG-specific patterns
+```text
+in:  csrf: { auto_html: true }
+out: ConfigurationException: Configuration section 'security' field 'csrf.auto_html' has invalid value true: remove this line. Automatic token injection is not supported because it cannot follow the browser's HTML parsing and could send the token to another site. Add a hidden "_csrf_token" field to your form templates, filled with the escaped value of CsrfTokenManagerInterface::getToken().
+```
+
+**8. Database settings refuse what they used to tolerate.** Split a URL into
+`host`, `port`, `database`, `username`, `password`; delete `emulate_prepares`.
+
+```text
+in:  database: postgres://u:p@h/db
+out: ConfigurationException: Configuration section 'database' field 'database' has invalid value "postgres://***@h/db": must be a database name, not a connection URL.
+in:  emulate_prepares: false
+out: ConfigurationException: Configuration section 'database' field 'emulate_prepares' has been REMOVED from Zephyrus and is no longer honoured. ... To fix: delete this line from the database section.
+```
+
+**9. An unrecognized environment is production.** Debug then goes off.
+
+```text
+in:  application: { environment: prodution, debug: true }
+out: environment = Production, isDebugEnabledForBoot() = false
+in:  no environment key
+out: environment = Production, debug = false
+in:  application: { environment: production, debug: true }, build()
+out: error_log: Zephyrus: application.debug is true while application.environment is production-like. Debug output has been FORCED OFF for this boot: ... If this is deliberate, call ApplicationBuilder::withProductionDebugAcknowledged(); even then, only clients named by withDebugClientAllowlist() (or loopback) can see it.
+```
+
+**10. Booleans are strict, and an unset `!env` is null.** Give boolean tags a
+default.
+
+```text
+in:  debug: maybe
+out: ConfigurationException: Configuration section 'application' field 'debug' has invalid value "maybe": is not a boolean; use true/false, 1/0, on/off or yes/no.
+in:  debug: !env APP_DEBUG   (APP_DEBUG unset)
+out: ConfigurationException: Configuration section 'application' field 'debug' has invalid value null: is not a boolean; use true/false, 1/0, on/off or yes/no; an unset !env without a default reads as null; add a default, such as !env NAME, false.
+in:  debug: 'false'
+out: false
+```
+
+**11. `!env` never reads `$_SERVER`, and refuses request-controlled names.** A
+value set with Apache `SetEnv` or `fastcgi_param` is invisible: set it in the
+process environment (container env, php-fpm `env[NAME]`) or `.env`.
+
+```text
+in:  $_SERVER['APP_ENV'] = 'dev' only; environment: !env APP_ENV, prod
+out: environment = Production
+in:  environment: !env HTTP_APP_ENV, dev
+out: ConfigurationException: !env tag at "application.environment": "HTTP_APP_ENV": names starting with HTTP_ can be set per request by the client request headers, so they are never read as configuration; rename the variable.
+```
+
+**12. Built-in sections are not read through `section()`.**
+
+```text
+in:  $config->section('database')   (also config('Database'))
+out: InvalidArgumentException: Section "database" is a built-in typed property; use $configuration->database or config('database') instead.
+in:  Configuration::fromYamlFile($path, ['database' => RenderConfig::class])
+out: InvalidArgumentException: Section factory "database" collides with the built-in section "database"; read it with $configuration->database instead.
+```
+
+**13. Errors are invisible without an event dispatcher.** Each of these answers
+a bare 500 `Internal Server Error`; the reason only shows in an
+`ExceptionEvent` listener (see Errors).
+
+```text
+in:  #[Middleware('auht')] (name never registered), GET /typo
+out: 500 "Internal Server Error"; ExceptionEvent: Zephyrus\Routing\Exception\RouteMiddlewareException: Unknown route middleware: auht
+in:  a RenderResponses controller with no engine mounted, GET /view
+out: 500 "Internal Server Error"; ExceptionEvent: Zephyrus\Rendering\RenderException: No render engine has been configured. Call withRenderEngine() on the builder, or setRenderEngine() from your own controller factory.
+in:  throw new RuntimeException('database password leaked in this message'), Accept: application/json
+out: 500 {"error":{"status":500,"message":"Internal Server Error"}} (the message stays server-side)
+```
+
+**14. Routes on a parent's methods are not registered for its subclasses.**
+Only methods a class declares itself are read.
+
+```text
+in:  abstract BaseController { #[Get('/inherited')] public function inherited() }, ChildController extends it
+out: GET /inherited => 404; ExceptionEvent: No route matched "GET" "/inherited"
+```
+
+**15. `discoverControllers()` fails silently.**
+
+```text
+in:  discoverControllers('App\\Controllers', '/no/such/dir')
+out: 0 routes, no error
+in:  discoverControllers('Wrong\\Namespace', <the real controllers directory>)
+out: 0 routes, no error
+```
+
+**16. Route paths the router refuses at registration.**
+
+```text
+in:  #[Get('/files/{name}.pdf')]
+out: RouteSignatureException: Invalid route path "/files/{name}.pdf": segment "{name}.pdf" mixes a placeholder with text; capture the whole segment with a constraint or give the placeholder its own segment
+in:  #[Get('/posts/{id?}')]
+out: RouteSignatureException: Invalid route parameter name "id?" on route "/posts/{id?}": optional placeholders are not supported; declare a second route without that segment
+in:  #[Get('/search?q={q}')]
+out: RouteSignatureException: Invalid route path "/search?q={q}": the request path ends at "?", so this route would only match "/search"; declare "/search" and read the query string from the request
+in:  #[WithoutMiddleware(CsrfMiddleware::class)]
+out: RouteMiddlewareException: Route "GET /hook" cannot skip "Zephyrus\Security\CsrfMiddleware": it is a framework security middleware. Exempt the path under security.csrf.exceptions instead
+```
+
+**17. A middleware group declared after the routes is unknown to them.**
+
+```text
+in:  (new Router())->controller(AdminController::class)->middlewareGroup('admin', ['token'])
+out: GET /admin => 500; ExceptionEvent: Unknown route middleware: admin
+in:  (new Router())->middlewareGroup('admin', ['token'])->controller(AdminController::class)
+out: GET /admin => 401 without the token, 200 with it
+```
+
+**18. `#[RequiresEnv]` matches exactly, from the real environment.**
+
+```text
+in:  #[RequiresEnv('MODE', 'api')] with $_SERVER['MODE'] = 'api' only, or MODE=API
+out: route not registered (404)
+in:  MODE=api in the process environment (putenv, container env, .env loaded by phpdotenv)
+out: GET /v1/status registered
+```
+
+**19. Without `SessionMiddleware`, session writes vanish.** With a session
+manager registered but no session started, they throw instead.
+
+```text
+in:  session(['user_id' => 7]); session('user_id')   (no SessionMiddleware)
+out: null, no error
+in:  Flash::success('Saved.'); Flash::readAll()     (no SessionMiddleware)
+out: {"success":[],"error":[],"warning":[],"info":[]}
+in:  (new SessionManager())->set('user_id', 7) before start()
+out: SessionException: Cannot write "user_id" to the session: no session is active. Run SessionMiddleware on this route, or call start(); in a test, pass an array to new SessionManager([]).
+```
+
+**20. Behind a proxy, `fromGlobals()` needs the proxy list.** It never reads
+`security.trusted_proxies` on its own.
+
+```text
+in:  REMOTE_ADDR 10.0.0.5, X-Forwarded-For 203.0.113.9, X-Forwarded-Proto https; Request::fromGlobals(...)
+out: clientIp() = 10.0.0.5, scheme = http
+in:  the same with trustedProxies: ['10.0.0.0/8']
+out: clientIp() = 203.0.113.9, scheme = https
+```
+
+**21. A malformed JSON body reads as empty.** Check `isMalformed()` before
+validating, or a broken payload fails as "required" fields.
+
+```text
+in:  Content-Type: application/json, body {"name": "Atlas"   (fromGlobals)
+out: body()->isMalformed() = true, body()->all() = []
+in:  Request::fromArray('POST', '/x', headers: [JSON], rawBody: '{"name": "Atlas"}')
+out: body()->get('name') = null (fromArray only takes the decoded body: body: ['name' => 'Atlas'])
+```
+
+**22. Response header names are stored lowercased.**
+
+```text
+in:  Response::json([...])->withHeader('Cache-Control', 'no-store'); $response->headers['Cache-Control']
+out: Warning: Undefined array key "Cache-Control" (null); getHeader('Cache-Control') = 'no-store'
+in:  Response::text('x')->withHeader('X-Name', "a\r\nSet-Cookie: x=1")
+out: InvalidArgumentException: Invalid value for HTTP header "X-Name": it contains a control character other than HTAB.
+```
+
+**23. NUMERIC comes back as a float.** Money loses precision, and a `string`
+entity property gets scientific notation. Register the passthrough shown in
+Database.
+
+```text
+in:  budget NUMERIC(20,2) = 12345678901234567.89; selectOne(...)->budget
+out: 12345678901234568.0 (float)
+in:  Project::build($row) with public string $budget
+out: '1.2345678901235E+16'
+in:  after registerTypeConversion('NUMERIC', fn (string $v): string => $v)
+out: '12345678901234567.89'
+```
+
+**24. bytea comes back as a stream.** A `string` entity property gets the
+resource name, not the bytes. Read it with `stream_get_contents()` before
+hydrating; write bytes with `new Binary($bytes)`.
+
+```text
+in:  digest BYTEA = \x0001ff; selectOne(...)->digest
+out: resource (stream)
+in:  Blob::build($row) with public string $digest
+out: 'Resource id #44'
+```
+
+**25. PostgreSQL inserts return ids through RETURNING only.**
+
+```text
+in:  $db->insertGetId('INSERT INTO project (name, budget) VALUES (?, ?)', [...])
+out: DatabaseException: insertGetId() needs INSERT ... RETURNING id on PostgreSQL and SQLite: add RETURNING id to the statement.
+in:  $db->lastInsertId()
+out: DatabaseException: lastInsertId() is refused on PostgreSQL: use insertGetId() (insertRowGetId() in a Broker) with INSERT ... RETURNING id.
+```
+
+**26. Array parameters are refused.** Pass a PostgreSQL array literal with a
+cast (`id = ANY(?::bigint[])` with `'{1,2}'`) or JSON (`json_encode()`).
+
+```text
+in:  $db->select('SELECT * FROM project WHERE id = ANY(?)', [[1, 2]])
+out: InvalidArgumentException: Query parameter #1 cannot be bound: array has no SQL form. Bind a scalar, null, a DateTimeInterface, a BackedEnum, a Stringable, a Binary or a stream.
+```
+
+**27. `DatabaseException` messages withhold the SQL and the driver text.**
+Branch on `sqlState()`; log `driverMessage()` and `sql()`.
+
+```text
+in:  a duplicate value on a UNIQUE column
+out: getMessage() = "Query failed [SQLSTATE 23505]: statement and driver detail withheld, read sql() and driverMessage() to inspect them"
+     sqlState() = "23505", driverMessage() = "SQLSTATE[23505]: Unique violation: 7 ERROR:  duplicate key value violates unique constraint \"project_name_key\" ..."
+```
+
+**28. Catching a failed statement inside `transaction()` poisons the commit.**
+
+```text
+in:  $db->transaction(function () use ($db) { try { <duplicate insert> } catch (DatabaseException) {} return 'committed'; })
+out: DatabaseException: Transaction failed at commit [SQLSTATE 25P02]: a statement inside it failed and its exception was caught, so its writes were rolled back; let the exception propagate, or catch it around a nested transaction()
+```
+
+**29. Mail errors withhold the transport text.**
+
+```text
+in:  send() to an SMTP port that refuses connections
+out: MailerException, failure = send_failed, getMessage() = "The mail transport did not accept the message; the reason is withheld, read transportMessage() (it may name recipients)."
+     transportMessage() = "SMTP Error: Could not connect to SMTP host. Failed to connect to server"
+```
+
+## Cheat sheet
+
+| Need | Write |
+| --- | --- |
+| Boot | `ApplicationBuilder::create()->withConfiguration($config, basePath: $root)->withRouter($router)->...->build()` |
+| Serve | `$app->handle(Request::fromGlobals(trustedProxies: $config->security->trustedProxies))->send()` |
+| Load config | `Configuration::fromYamlFile($path, ['render' => RenderConfig::class])` |
+| Read config | `$config->security->maxBodySize`, `$config->database`, `$config->section('render')`, `config('render', 'directory')` |
+| Global middleware | `$builder = $builder->withMiddleware($m)` (first added runs outermost) |
+| Named middleware | `registerMiddleware('auth', $m)` + `#[Middleware('auth')]` |
+| Security gap enforced elsewhere | `withAcknowledgedSecurityKeys(['csrf'])` |
+| Views | `withRenderEngine($engine)` + `use RenderResponses;` + `$this->render('page', [...])` |
+| Controller factory | `withControllerFactory(fn (string $class): object => new $class($deps))` |
+| Report errors | `withEventDispatcher($events)` + `ExceptionEvent` listener |
+| Custom error page | `withExceptionHandler(RouteNotFoundException::class, fn ($e, Request $r) => ...)` |
+| Debug behind Docker | `withDebugClientAllowlist('secret@<gateway-ip>')` |
+| Route | `#[Get('/x/{id}', constraints: ['id' => '\d+'], middlewares: ['auth'], name: 'x.show')]` |
+| URL for a route | `route('x.show', ['id' => 1])` |
+| Per-process routes | `#[RequiresEnv('MODE', 'api')]` on a base controller |
+| Query / body / header | `$request->query('page', 1)`, `$request->body()->get('name')`, `$request->headers()->bearerToken()` |
+| Responses | `Response::json()`, `html()`, `text()`, `noContent()`, `redirect()`, `localRedirect()` |
+| CSRF field | `<input type="hidden" name="_csrf_token" value="...">` or `X-CSRF-Token` header |
+| Session in tests | `new SessionManager([])` |
+| Validate | `(new FormValidator([...]))->validate($data)->hasErrors()` |
+| Insert with id | `insertRowGetId('INSERT ... RETURNING id', [...])` |
+| Exact money | `$db->registerTypeConversion('NUMERIC', fn (string $v): string => $v)` |
+| Escape outside Latte | `e($value)` |
 
 ## References
 
-- Core repo: https://github.com/zephyrus-framework/core
-- Application template: https://github.com/zephyrus-framework/framework
-- Latte engine docs: https://latte.nette.org/
-- Production reference (and source for empirical patterns):
-  `immunity-app` (private; ask Ophelios for access)
-- In-repo: `examples/zephyrus/` — minimal Hello-World scaffold
+- Framework: https://github.com/ophelios-studio/zephyrus-core (`CHANGELOG.md`
+  lists every breaking change since `v0.13.0` with its fix)
+- Packagist: https://packagist.org/packages/zephyrus-framework/core
+- Latte: https://latte.nette.org/
+- Runnable example: `examples/zephyrus/` in this repo (config, bootstrap,
+  CSRF-protected form, JSON route, health probe)
