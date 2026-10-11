@@ -10,7 +10,7 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against the `dev` branch at commit `071064e`
+Everything below was run against the `dev` branch at commit `0f65185`
 (Packagist `dev-dev`). The last tag, `v0.13.0`, predates many breaking changes;
 the framework's `CHANGELOG.md` lists each one with the change to make. Before
 1.0 a minor version may break the API. The boot-time error messages name their
@@ -407,7 +407,8 @@ $builder = $builder->registerMiddleware('auth', new RequireUserMiddleware());
 `HeaderTokenGuard`, `IpAllowlistGuard`, composable with `AllAuthGuard`,
 `AnyAuthGuard` and `NotAuthGuard` (refusal: 401 JSON `{"error":"Unauthorized"}`).
 `$router->middlewareGroup('admin', ['auth', 'audit'])` names a list, expanded
-when routes are added: declare groups before `discoverControllers()` (gotcha 17).
+when routes are added: declare groups before `discoverControllers()`. `build()`
+refuses a route that names a middleware or group it cannot resolve (gotcha 17).
 
 ## Sessions, CSRF and flash messages
 
@@ -540,10 +541,19 @@ $builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwabl
 
 A handler that throws anything else yields the fixed 500. With
 `application.debug: true`, Tracy only shows itself to loopback clients. Behind
-Docker the browser arrives from the bridge gateway:
-`withDebugClientAllowlist('secret@172.17.0.1')` plus a `tracy-debug=secret`
-cookie. In `production` and `staging`, debug is forced off (gotcha 9) unless
-you call `withProductionDebugAcknowledged()`.
+Docker the browser arrives from the bridge gateway, so name it with a secret
+and send that secret in a `tracy-debug` cookie:
+
+```php
+// DEBUG_CLIENTS holds "secret@172.17.0.1"; unset or empty names no client beyond loopback.
+$builder = $builder->withDebugClientAllowlist(env('DEBUG_CLIENTS'));
+```
+
+The secret is a credential: keep it in the environment or an uncommitted
+`.env`, never in git. Each entry is an exact address or `secret@address`; an
+empty secret, an empty address or a range is refused (gotcha 30). In
+`production` and `staging`, debug is forced off (gotcha 9) unless you call
+`withProductionDebugAcknowledged()`.
 
 ## Database
 
@@ -651,7 +661,7 @@ JSON `rawBody:` (gotcha 21). `App` holds per-request statics
 
 ## Gotchas, each with its repro
 
-Every repro below was run on `071064e`: the input, then the observed result.
+Every repro below was run on `0f65185`: the input, then the observed result.
 Repros marked *(upgrading from 0.13)* only concern an app written for
 `v0.13.0`; a new app can skip them.
 
@@ -795,8 +805,6 @@ a bare 500 `Internal Server Error`; the reason only shows in an
 `ExceptionEvent` listener (see Errors).
 
 ```text
-in:  #[Middleware('auht')] (name never registered), GET /typo
-out: 500 "Internal Server Error"; ExceptionEvent: Zephyrus\Routing\Exception\RouteMiddlewareException: Unknown route middleware: auht
 in:  a RenderResponses controller with no engine mounted, GET /view
 out: 500 "Internal Server Error"; ExceptionEvent: Zephyrus\Rendering\RenderException: No render engine has been configured. Call withRenderEngine() on the builder, or setRenderEngine() from your own controller factory.
 in:  throw new RuntimeException('database password leaked in this message'), Accept: application/json
@@ -833,11 +841,15 @@ in:  #[WithoutMiddleware(CsrfMiddleware::class)]
 out: RouteMiddlewareException: Route "GET /hook" cannot skip "Zephyrus\Security\CsrfMiddleware": it is a framework security middleware. Exempt the path under security.csrf.exceptions instead
 ```
 
-**17. A middleware group declared after the routes is unknown to them.**
+**17. `build()` refuses a route middleware it cannot resolve.** Every name in
+`#[Middleware]` must be registered with `registerMiddleware()` before `build()`,
+and a group must be declared before the routes that use it.
 
 ```text
+in:  #[Middleware('auht')] on GET /typo, registerMiddleware('auth', ...)
+out: RouteMiddlewareException: Route middleware is not registered: "auht" on GET /typo; registered names: "auth". Register it with registerMiddleware() before build(), or, for a group, define it with Router::middlewareGroup() before the routes that name it.
 in:  (new Router())->controller(AdminController::class)->middlewareGroup('admin', ['token'])
-out: GET /admin => 500; ExceptionEvent: Unknown route middleware: admin
+out: RouteMiddlewareException: Route middleware is not registered: "admin" on GET /admin; registered names: "token". Register it with registerMiddleware() before build(), or, for a group, define it with Router::middlewareGroup() before the routes that name it.
 in:  (new Router())->middlewareGroup('admin', ['token'])->controller(AdminController::class)
 out: GET /admin => 401 without the token, 200 with it
 ```
@@ -957,6 +969,24 @@ out: MailerException, failure = send_failed, getMessage() = "The mail transport 
      transportMessage() = "SMTP Error: Could not connect to SMTP host. Failed to connect to server"
 ```
 
+**30. The debug allowlist refuses entries that would need no cookie.** The
+messages name the entry's position, never its secret.
+
+```text
+in:  withDebugClientAllowlist('@172.17.0.1')   (also DebugIntegration::initialize())
+out: InvalidArgumentException: Debug client allowlist entry 1 has an empty secret before "@": with no tracy-debug cookie it would admit every client at that address. Set a secret, or list the bare address if that is intended.
+in:  withDebugClientAllowlist('secret@')
+out: InvalidArgumentException: Debug client allowlist entry 1 has no address after "@".
+in:  withDebugClientAllowlist('10.0.0.0/8')
+out: InvalidArgumentException: Debug client allowlist entry 1 is a range: Tracy matches exact addresses only, so list each address.
+in:  withDebugClientAllowlist(['secret@10.0.0.5 other@10.0.0.6'])
+out: InvalidArgumentException: Debug client allowlist entry 1 holds whitespace or a comma: pass each address as its own array entry.
+in:  withDebugClientAllowlist('') or withDebugClientAllowlist(null)
+out: accepted: Tracy shows to loopback clients only
+in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
+out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
+```
+
 ## Cheat sheet
 
 | Need | Write |
@@ -972,7 +1002,7 @@ out: MailerException, failure = send_failed, getMessage() = "The mail transport 
 | Controller factory | `withControllerFactory(fn (string $class): object => new $class($deps))` |
 | Report errors | `withEventDispatcher($events)` + `ExceptionEvent` listener |
 | Custom error page | `withExceptionHandler(RouteNotFoundException::class, fn ($e, Request $r) => ...)` |
-| Debug behind Docker | `withDebugClientAllowlist('secret@<gateway-ip>')` |
+| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` with `DEBUG_CLIENTS=secret@<gateway-ip>` + `tracy-debug=secret` cookie |
 | Route | `#[Get('/x/{id}', constraints: ['id' => '\d+'], middlewares: ['auth'], name: 'x.show')]` |
 | URL for a route | `route('x.show', ['id' => 1])` |
 | Per-process routes | `#[RequiresEnv('MODE', 'api')]` on a base controller |
