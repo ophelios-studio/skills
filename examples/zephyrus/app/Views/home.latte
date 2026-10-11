@@ -1,16 +1,20 @@
-{*
-  Latte template — extends a hypothetical layouts/main.latte.
-  This stub demonstrates the conventional shape; the controller currently
-  returns JSON, so this file isn't rendered by HomeController.
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Zephyrus example</title>
+</head>
+<body>
+    <h1>{if $name}Hello, {$name}{else}Hello from Zephyrus{/if}</h1>
 
-  In a real project you'd:
-    1. Create app/Views/layouts/main.latte with {block content}{/block}
-    2. Add a `RenderResponses` trait usage to HomeController
-    3. Return $this->render('home', ['title' => 'Home']) instead of JSON
-*}
-{layout 'layouts/main.latte'}
+    {foreach $errors as $error}
+        <p role="alert">{$error}</p>
+    {/foreach}
 
-{block content}
-<h1>{$title}</h1>
-<p>Hello from Zephyrus.</p>
-{/block}
+    <form method="post" action="/greet">
+        <input type="hidden" name="_csrf_token" value="{csrfToken()}">
+        <label>Name <input name="name" maxlength="40" required></label>
+        <button>Greet</button>
+    </form>
+</body>
+</html>

@@ -1,65 +1,64 @@
 # Zephyrus example
 
-Minimal Hello-World Zephyrus app. Pared down from the production
-`immunity-app` to the smallest set of files that demonstrates the
-empirical patterns in the parent skill.
+The smallest app that exercises the patterns in the `zephyrus` skill: a
+strict `config.yml` that passes the boot-time security wiring check, an
+app-local bootstrap, attribute routes, a Latte page with a CSRF-protected form,
+a JSON route and a health probe.
 
 ## Layout
 
 ```
-composer.json                         # Pulls zephyrus-framework/core dev-dev
-config.yml                            # application/render/localization/security sections
-public/index.php                      # Front controller — boots Application
-app/Controllers/HomeController.php    # #[Get('/')] returning JSON + #[Get('/health')] probe
-app/Models/Core/Application.php       # Minimal Application class with discoverControllers
-app/Views/home.latte                  # Stub Latte template (not exercised by JSON-only handler)
+composer.json                       # zephyrus-framework/core dev-dev from Packagist
+config.yml                          # application, session, security, localization
+public/index.php                    # front controller: App\Kernel::run()
+app/Kernel.php                      # loads config, mounts middleware, builds the app
+app/Controllers/HomeController.php  # GET /, POST /greet, GET /api/hello/{name}, GET /health
+app/Views/home.latte                # the page and its form
 ```
 
 ## Run
 
+Requires PHP 8.4+ with intl, mbstring, pdo, sodium and fileinfo.
+
 ```bash
-# Install
 composer install
-
-# Serve (matches the framework template's recommended command)
-php -S localhost:8080 -t public
-
-# Hit it
-curl http://localhost:8080/
-# → {"message":"Hello from Zephyrus","docs":"...","mode":"WEB"}
-
-curl http://localhost:8080/health
-# → ok
+php -S localhost:8000 -t public
 ```
 
-## What this demonstrates
+In another terminal (bash or zsh):
 
-- **Front controller pattern** — `public/index.php` boots
-  `App\Models\Core\Application`.
-- **Default `MODE=WEB`** for single-process dev. Set `MODE=API` to
-  exercise multi-mode controller scoping.
-- **Attribute routing** — `#[Get('/')]` on a method, no manual route
-  registration.
-- **Health-check pattern** — `#[Get('/health')]` with no `#[RequiresEnv]`
-  registers in every mode; useful as a container probe across
-  WEB / API / INDEXER deployments.
-- **`Configuration::fromYamlFile`** + `!env` for environment-driven
-  config.
-- **Auto-discovery** via `Router::discoverControllers(namespace, dir)`.
+```bash
+curl -i http://localhost:8000/health
+# HTTP/1.1 200 OK ... ok
 
-## What's NOT here (study `immunity-app` for the rest)
+curl -i http://localhost:8000/api/hello/world
+# HTTP/1.1 200 OK ... {"message":"Hello, world"}
 
-- Database wiring (Db singleton, `DATABASE_URL` parser, broker base
-  class with bytea sanitization)
-- Broker / Service / Entity layering with raw SQL
-- Named middleware registration + `#[Middleware('name')]` application
-- Custom controller factory for render-engine injection
-- `#[RequiresEnv('MODE', 'X')]` controller-class scoping for multiple
-  entry points
-- Latte template rendering with `RenderResponses` trait
-- Test bootstrap that rebuilds the test DB and integration tests
-  wrapped in transactions
-- Localization, validation, sessions
+curl -i http://localhost:8000/api/hello/World
+# HTTP/1.1 404 Not Found (the route constrains {name} to [a-z]+)
 
-For all of those, see `www/immunity-app` directly — it's the canonical
-production reference for Zephyrus.
+curl -i -X POST -d name=Ada http://localhost:8000/greet
+# HTTP/1.1 403 Forbidden ... {"error":"Invalid or missing CSRF token."}
+
+# The form flow: keep the session cookie and send the token back.
+TOKEN=$(curl -s -c jar.txt http://localhost:8000/ | sed -n 's/.*name="_csrf_token" value="\([^"]*\)".*/\1/p')
+curl -i -b jar.txt -d "_csrf_token=$TOKEN&name=Ada" http://localhost:8000/greet
+# HTTP/1.1 200 OK ... <h1>Hello, Ada</h1>
+
+curl -i -b jar.txt -d "_csrf_token=$TOKEN&name=" http://localhost:8000/greet
+# HTTP/1.1 422 Unprocessable Content ... This field is required.
+
+head -c 2000000 /dev/zero | curl -i -b jar.txt -H "X-CSRF-Token: $TOKEN" --data-binary @- http://localhost:8000/greet
+# HTTP/1.1 413 Content Too Large ... {"error":"Request body too large."}
+```
+
+Every response carries the headers declared under `security.headers`
+(`x-frame-options: DENY`, `referrer-policy: same-origin`).
+
+## Things to try
+
+- Delete the `MaxBodySizeMiddleware` line in `app/Kernel.php`: the next
+  request fails to boot with `security.maxBodySize is not enforced as declared`.
+- Misspell `same_site` in `config.yml`: the boot names the closest key.
+- `APP_DEBUG=true php -S localhost:8000 -t public` turns on the Tracy debugger
+  for loopback clients.

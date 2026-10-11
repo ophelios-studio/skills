@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-define('ROOT_DIR', dirname(__DIR__));
+require dirname(__DIR__) . '/vendor/autoload.php';
 
-require ROOT_DIR . '/vendor/autoload.php';
-
-(new \App\Models\Core\Application())->run();
+App\Kernel::run(dirname(__DIR__));
