@@ -1,38 +1,37 @@
 {*
-  Override stub — copy of the bundled theme's docs layout that you can
-  customize. The path under `templates/` must MATCH the bundled path
-  EXACTLY: `app/Views/layouts/docs.latte` → `templates/layouts/docs.latte`.
-  A typo or wrong subdir means this file is silently ignored and the
-  bundled default ships.
+  Override of the bundled app/Views/layouts/docs.latte. The path under
+  templates/ must match the bundled path exactly, or this file is silently
+  ignored. Includes resolve from this file's folder, hence '../partials/'.
+  The only change from the bundled copy: a middle dot instead of an
+  em-dash in the title.
 *}
-<!doctype html>
-<html lang="{$currentLocale ?? 'en'}" data-theme="dark">
+<!DOCTYPE html>
+<html lang="{$currentLocale ?? 'en'}">
 <head>
-    {include 'partials/head.latte'}
+    {include '../partials/head.latte'}
+    <title>{$title ?? 'Docs'} · {$leafName ?? 'Docs'}</title>
     {block head}{/block}
 </head>
-<body>
-    {include 'partials/nav.latte'}
-    <main class="container">
-        {block content}{/block}
-    </main>
-    {include 'partials/sidebar.latte'}
-    {include 'partials/toc.latte'}
-    {include 'partials/search-modal.latte'}
+<body class="bg-deep text-body antialiased font-body">
+    {include '../partials/nav.latte', docsMode: true}
 
-    {if defined('DEV_SERVER')}
-    {* Live-reload polling — only active during `leaf dev` *}
-    <script>
-    let lastHash = null;
-    async function check() {
-        const r = await fetch('/__dev/reload');
-        const d = await r.json();
-        if (lastHash && d.hash !== lastHash) location.reload();
-        lastHash = d.hash;
-    }
-    check();
-    setInterval(check, 1500);
-    </script>
-    {/if}
+    <div class="docs-layout">
+        <div class="sidebar-overlay" onclick="closeSidebar()"></div>
+        {include '../partials/sidebar.latte'}
+        <main class="docs-main">
+            {block content}{/block}
+        </main>
+        {include '../partials/toc.latte'}
+    </div>
+
+    {include '../partials/search-modal.latte'}
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="{$leafBaseUrl}/assets/js/copy-code.js"></script>
+    <script src="{$leafBaseUrl}/assets/js/sidebar.js"></script>
+    <script src="{$leafBaseUrl}/assets/js/search.js"></script>
 </body>
 </html>
