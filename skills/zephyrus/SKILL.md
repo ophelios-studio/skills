@@ -779,6 +779,7 @@ final class AppTest extends TestCase
 
     protected function tearDown(): void
     {
+        $_SESSION = [];
         App::reset();
     }
 
@@ -818,14 +819,22 @@ final class AppTest extends TestCase
         self::assertSame(302, $signedIn->status);
         self::assertSame(['user' => 42], json_decode($me->body, true));
     }
+
+    public function testAnAnonymousRequestSeesNoUser(): void
+    {
+        $me = self::$app->handle(Request::fromArray('GET', '/me'));
+
+        self::assertSame(['user' => null], json_decode($me->body, true));
+    }
 }
 ```
 
-The application is built once per class and `App::reset()` in `tearDown()`
-clears the statics between tests; the next request re-registers them. In-process
-there is no cookie to carry: `handle()` returns no `Set-Cookie`, and the PHP
-session stays open for the whole process, so a GET followed by a POST is the
-same session, and the token read from the page is the one the POST must send.
+The application is built once per class; the next request re-registers the
+statics `App::reset()` clears. In-process there is no cookie to carry:
+`handle()` returns no `Set-Cookie`, so a GET followed by a POST is the same
+session, and the token read from the page is the one the POST must send. That
+session is process-wide, so `tearDown()` empties `$_SESSION` as well as the
+statics.
 
 `Request::fromArray()` takes the decoded body in `body:`; it does not decode a
 JSON `rawBody:` (gotcha 21).
