@@ -1,6 +1,6 @@
 ---
 name: zephyrus
-description: Use when building or changing an app on the Zephyrus PHP 8.4+ framework (Composer package `zephyrus-framework/core`). Triggers on `Zephyrus\` imports, `ApplicationBuilder`, `Configuration::fromYamlFile`, a `config.yml` with `application:`, `session:`, `security:` or `database:` sections, attribute routes (`#[Get]`, `#[Post]`, `#[Middleware]`, `#[RequiresEnv]`), `discoverControllers`, Latte views with `RenderResponses`, `SessionMiddleware`, `CsrfMiddleware`, `MaxBodySizeMiddleware`, `FormValidator`, `Database`/`Broker`/`Entity`, `Mailer`, and boot errors such as "is not a known section", "is an unknown key" or "Configuration declares security settings that this application does not enforce as declared". Covers the bootstrap, strict configuration, the boot-time security wiring check, sessions and CSRF, routing rules, error reporting, the PostgreSQL layer and the Broker/Service/Entity convention, with a repro for every gotcha.
+description: Use when building or changing an app on the Zephyrus PHP 8.4+ framework (Composer package `zephyrus-framework/core`). Triggers on `Zephyrus\` imports, `ApplicationBuilder`, `Configuration::fromYamlFile`, a `config.yml` with `application:`, `session:`, `security:` or `database:` sections, attribute routes (`#[Get]`, `#[Post]`, `#[Middleware]`, `#[RequiresEnv]`), `discoverControllers`, Latte views with `RenderResponses`, `SessionMiddleware`, `CsrfMiddleware`, `MaxBodySizeMiddleware`, `FormValidator`, `Database`/`Broker`/`Entity`, `Mailer`, `Uploader`, `Cryptography`, `ContentSecurityPolicy`, and boot errors such as "is not a known section", "is an unknown key" or "Configuration declares security settings that this application does not enforce as declared". Covers the bootstrap, strict configuration, the boot-time security wiring check, sessions and CSRF, routing rules, error reporting, the PostgreSQL layer and the Broker/Service/Entity convention, with a repro for every gotcha.
 ---
 
 # Zephyrus
@@ -10,11 +10,14 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against the `dev` branch at commit `0f65185`
-(Packagist `dev-dev`). The last tag, `v0.13.0`, predates many breaking changes;
-the framework's `CHANGELOG.md` lists each one with the change to make. Before
-1.0 a minor version may break the API. The boot-time error messages name their
-own fix: when one disagrees with this file, follow the message.
+Everything below was run against the `dev` branch at commit `2842a2b`
+(Packagist `dev-dev`, what the apps pin). The last tag, `v0.13.0` (what a bare
+`composer require` installs), predates many breaking changes and lacks every
+API marked *(dev)*, which means on dev, unreleased since `v0.13.0`; the
+bootstrap below does not run on it. The framework's `CHANGELOG.md` lists each
+change with the fix to make. Before 1.0 a minor version may break the API. The
+boot-time error messages name their own fix: when one disagrees with this file,
+follow the message.
 
 ## Install
 
@@ -39,21 +42,24 @@ Where each class lives (the PSR-4 root is `Zephyrus\` under `src/Zephyrus/`):
 
 | Namespace | Classes |
 | --- | --- |
-| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` |
-| `Zephyrus\Core\Config` | `Configuration`, `ConfigSection`, `ConfigurationException`, `DatabaseConfig` |
+| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` *(dev)* |
+| `Zephyrus\Core\Config` | `Configuration`, `ConfigSection`, `ConfigurationException`, `DatabaseConfig`, `Environment` |
 | `Zephyrus\Http` | `Request`, `Response`, `MiddlewareInterface` |
 | `Zephyrus\Routing` | `Router` |
-| `Zephyrus\Routing\Attribute` | `Get`, `Post`, `Put`, `Patch`, `Delete`, `Root`, `Middleware`, `MiddlewareGroup`, `WithoutMiddleware`, `RequiresEnv` |
+| `Zephyrus\Routing\Attribute` | `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options`, `Route`, `Root`, `Middleware`, `MiddlewareGroup`, `WithoutMiddleware` *(dev)*, `RequiresEnv` |
 | `Zephyrus\Routing\Exception` | `RouteNotFoundException`, `RouteMiddlewareException`, `RouteSignatureException` |
 | `Zephyrus\Controller` | `Controller` |
 | `Zephyrus\Rendering` | `LatteEngine`, `PhpEngine`, `RenderResponses`, `RenderConfig`, `Asset`, `RenderException` |
-| `Zephyrus\Security` | `SecureHeadersMiddleware`, `SecureHeadersConfig`, `MaxBodySizeMiddleware`, `CsrfMiddleware`, `CsrfConfig`, `CsrfFailure`, `CsrfTokenManagerInterface`, `ForceHttpsMiddleware`, `AllowedHostsMiddleware`, `AuthGuardMiddleware`, `HeaderTokenGuard`, `IpAllowlistGuard`, `PredicateAuthGuard`, `AllAuthGuard`, `AnyAuthGuard`, `NotAuthGuard` |
+| `Zephyrus\Security` | `SecureHeadersMiddleware`, `SecureHeadersConfig`, `MaxBodySizeMiddleware` *(dev)*, `BodyTooLarge` *(dev)*, `CsrfMiddleware`, `CsrfConfig`, `CsrfFailure` *(dev)*, `CsrfTokenManagerInterface`, `ForceHttpsMiddleware`, `AllowedHostsMiddleware`, `ContentSecurityPolicy`, `ContentSecurityPolicyMiddleware`, `Cryptography`, `AuthGuardMiddleware`, `HeaderTokenGuard`, `IpAllowlistGuard`, `RequestAttributeGuard`, `PredicateAuthGuard`, `AllAuthGuard`, `AnyAuthGuard`, `NotAuthGuard` |
 | `Zephyrus\Session` | `SessionManager`, `SessionMiddleware`, `SessionCsrfTokenManager`, `DatabaseSessionHandler`, `Flash`, `SessionException` |
-| `Zephyrus\Validation` | `FormValidator`, `Rules`, `ErrorBag`, `ValidationException` |
+| `Zephyrus\Validation` | `FormValidator`, `Rules`, `Rule`, `ErrorBag`, `ValidationException` |
 | `Zephyrus\Event` | `EventDispatcher` |
-| `Zephyrus\Data` | `Database`, `Broker`, `Entity`, `Binary`, `DatabaseException` |
-| `Zephyrus\Mailer` | `Mailer`, `MailerConfig`, `MailerException` |
+| `Zephyrus\Data` | `Database`, `Broker`, `Entity`, `JsonIgnore`, `Binary` *(dev)*, `DatabaseException`, `PaginationRequest`, `SortRequest`, `FilterRequest`, `PaginatedResult` |
+| `Zephyrus\Upload` | `Uploader`, `FileUpload`, `UploadException` |
+| `Zephyrus\Localization` | `Translator`, `JsonLocaleLoader` |
+| `Zephyrus\Mailer` | `Mailer`, `MailerConfig`, `MailerException`, `MailerFailure` *(dev)* |
 | `Zephyrus\Formatting` | `Formatter`, `FormatterException` |
+| `Zephyrus\Container` | `Container` |
 
 ## Bootstrap
 
@@ -135,8 +141,10 @@ What the builder does and does not do:
 - `withMiddleware()` mounts a global middleware: it runs on every request,
   including 404 and 405 answers, outermost first. `registerMiddleware('name', $m)`
   only names one; it runs on routes that reference the name.
-- `withRenderEngine()` injects the engine into every controller using
-  `RenderResponses`, including controllers built by `withControllerFactory()`.
+- `withRenderEngine()` *(dev)* injects the engine into every controller using
+  `RenderResponses`, including controllers built by `withControllerFactory()`
+  or `withContainer(new Container())` (auto-wires constructor dependencies;
+  `bind()`, `singleton()`, `instance()` register your own).
 - `withConfiguration($config, basePath: $root)` wires localization (a relative
   `locale_path` resolves against `basePath`). `build()` applies
   `application.debug` (Tracy) and `localization.timezone`. Nothing under
@@ -249,7 +257,7 @@ $billing = $config->section('billing'); // a BillingConfig
 A custom section does not refuse unknown keys: a misspelled key there silently
 takes the default.
 
-## Security wiring
+## Security wiring *(dev)*
 
 Declaring a key under `security:` is a promise. `build()` refuses to boot
 unless a middleware passed to `withMiddleware()` enforces it with the same
@@ -272,6 +280,24 @@ value (gotcha 3):
   `allowedHosts`, `csrf`, `maxBodySize`, `headers`, bare or `security.`-prefixed).
 - Not checked: `trusted_proxies`, `session`, `encryption`. Mount
   `SessionMiddleware` yourself, and pass the proxies to `Request::fromGlobals()`.
+- `withoutSecurityWiringCheck()` turns the whole check off; prefer naming the
+  one key with `withAcknowledgedSecurityKeys()`.
+
+A body over `max_body_size` (the declared `Content-Length`, else the raw body)
+is a 413: `text/plain` when `Accept` lists `text/html`, JSON
+`{"error":"Request body too large."}` otherwise. It is a budget, not a
+defence: also set the web server's limit (`client_max_body_size`,
+`LimitRequestBody`) and `post_max_size`. To answer yourself, pass `onFailure`
+(a `BodyTooLarge` carries `bytes` and `maxBytes`); returning `null` keeps the
+default:
+
+```php
+$builder = $builder->withMiddleware(new MaxBodySizeMiddleware(
+    $config->security->maxBodySize,
+    onFailure: fn (Request $request, BodyTooLarge $refusal): ?Response
+        => Response::html('<h1>That file is too large (limit ' . $refusal->maxBytes . ' bytes).</h1>', 413),
+));
+```
 
 ## Routing
 
@@ -312,8 +338,14 @@ final class ProjectController extends Controller
   `MiddlewareGroup`, `RequiresEnv`, `WithoutMiddleware`.
 - Action parameters resolve in order: a `Request` type, a route placeholder of
   the same name, a request attribute of the same name (here `$userId`, set by
-  the `auth` middleware), then the declared default. A value that does not
-  cast to the declared type answers 404. A constraint is a regex fragment.
+  the `auth` middleware), then the declared default. The query string never
+  binds (`?n=3` leaves `int $n = 5` at 5): read it with `$request->query()`. A
+  value that does not cast to the declared type answers 404. A constraint is a
+  regex fragment.
+- A missing record answers 404 like an unknown route: `return $this->abort(404)`,
+  or `throw new RouteNotFoundException('project')` from deeper code.
+- A POST with a `_method` field or an `X-HTTP-Method-Override` header of `PUT`,
+  `PATCH` or `DELETE` is routed as that method (`fromGlobals()` only).
 - A static route beats a parameterized one whatever the order (`/users/me`
   wins over `/users/{id}`). A GET route also answers HEAD; a wrong method
   answers 405 with `Allow`. A trailing slash is tolerated.
@@ -324,6 +356,11 @@ final class ProjectController extends Controller
 - `discoverControllers()` registers every concrete class under the directory
   whose namespace matches; a wrong directory or namespace registers nothing,
   silently (gotcha 15).
+- `#[WithoutMiddleware(SessionMiddleware::class)]` *(dev)* on a class or method
+  skips a global middleware for matched routes (a stateless webhook, a health
+  probe). The framework's security middleware (`ForceHttps`, `AllowedHosts`,
+  `Csrf`, `MaxBodySize`, `SecureHeaders`, `ContentSecurityPolicy`) cannot be
+  skipped: registration throws (gotcha 16).
 
 One codebase, several processes: `#[RequiresEnv]` registers a class's routes
 only when a variable matches (exactly, case-sensitive):
@@ -377,12 +414,14 @@ $back = Response::localRedirect('//evil.example/phish', '/'); // off-site target
 ```
 
 `Controller` (optional base class) adds `json()`, `created()`, `text()`,
-`noContent()`, `respond()`, `redirect()`, `localRedirect()`, `abort()`,
+`noContent()`, `respond()`, `redirect()`, `localRedirect()` *(dev)*, `abort()`,
 `abortJson()` and `validate()`, plus `before()`/`after()` hooks; an override of
 `before()` must call `parent::before($request)` or `$this->request` stays
 unset. Plain classes work as controllers too. `withHeader()` refuses control
 characters; check untrusted values with `Response::isValidHeaderValue()`, and
-redirect to user-supplied targets with `localRedirect()`.
+redirect to user-supplied targets with `localRedirect()`. Uploads:
+`$request->file('avatar')` returns a `FileUpload` or `null`; store it with
+`Uploader` (see `references/uploads.md`).
 
 ## Middleware
 
@@ -415,7 +454,10 @@ refuses a route that names a middleware or group it cannot resolve (gotcha 17).
 `SessionMiddleware` starts the session (and registers it for `session()` and
 `Flash`). Mount it before `CsrfMiddleware`, as in the bootstrap above. Without
 it, `session([...])` writes and flash messages are dropped silently (gotcha 19).
-Tests and CLI scripts use array storage: `new SessionManager([])`.
+Tests and CLI scripts use array storage: `new SessionManager([])`. After a
+sign-in, call `$session->regenerate()` before storing the user id (a new
+session id defeats fixation); on sign-out, `$session->destroy()`, which throws
+`SessionException` when the store refuses.
 
 To keep sessions in PostgreSQL, register `DatabaseSessionHandler` after
 `new SessionManager()` and before `build()`:
@@ -498,9 +540,13 @@ the kernel answers 422:
     ->validateOrFail($request->body()->all()); // throws ValidationException: the kernel answers 422
 ```
 
-That 422 is `{"errors":{...}}` for `Accept: application/json` but the bare text
-`Unprocessable Entity` for a browser, so HTML forms use `validate()` and
-re-render. `Rules::integer()` accepts the string `'20'` and refuses `true`.
+That 422 is `{"errors":{...}}` only when `Accept` lists JSON; anything else (a
+browser, a `fetch()` without that header) gets the bare text `Unprocessable
+Entity`, so HTML forms use `validate()` and re-render. `Rules::integer()`
+accepts the string `'20'` and refuses `true`. Every failing rule adds its
+message. `Rules::required()` passes `'   '`: add `Rules::notBlank()`. A field
+without `required()` skips its rules when empty. Custom rule:
+`Rule::of(fn (mixed $value): bool => $value === 'ok', 'Wrong code.')`.
 
 ## Errors and debugging
 
@@ -578,8 +624,8 @@ inspect them` and whose `driverMessage()` ends in `cannot insert multiple
 commands into a prepared statement`.
 
 The Broker/Service/Entity split is a convention of the apps built on Zephyrus
-(Agreely uses it under `app/Models/{Domain}/{Brokers,Services,Entities}`), not
-something the framework enforces. `Broker` and `Entity` are framework base
+(typically `app/Models/{Domain}/{Brokers,Services,Entities}`), not something
+the framework enforces. `Broker` and `Entity` are framework base
 classes; the Service is a plain class that calls the broker and hydrates
 entities. Raw SQL lives in brokers:
 
@@ -612,8 +658,11 @@ final class Project extends Entity
 
 `new ProjectBroker($db)`, then `Project::build($row)` (`buildArray($rows)` for
 lists) casts each column to the property's declared type, maps backed enums
-with `from()` and nested `Entity` properties, and `json_encode()` skips
-unassigned properties. Keep money exact before it reaches an entity (gotcha 23):
+with `from()` and nested `Entity` properties (from a JSON object column), and
+`json_encode()` skips unassigned properties and those marked `#[JsonIgnore]`.
+A nullable column needs a nullable property (gotcha 31). Pagination, sorting
+and filtering from request input: `references/database.md`. Keep money exact
+before it reaches an entity (gotcha 23):
 
 ```php
 $db->registerTypeConversion('NUMERIC', static fn (string $value): string => $value); // keep money exact
@@ -640,6 +689,12 @@ try {
 }
 ```
 
+Build one `Mailer` per message: `send()` keeps the recipients, so a reused
+instance mails the next message to the previous addresses too (gotcha 32).
+`html()`, `template('emails/welcome', [...])` (with a render engine as second
+constructor argument), `attach($path)` and `attachContent($bytes, 'report.pdf')`
+*(dev)* complete the builder.
+
 ## Testing
 
 The application handles a `Request` in-process, so tests need no server:
@@ -659,11 +714,28 @@ assert($refused->status === 403); // no CSRF token
 JSON `rawBody:` (gotcha 21). `App` holds per-request statics
 (`App::reset()` clears them between tests).
 
+## Other modules
+
+Read the reference file when the task touches its subject:
+
+| Module | For | Read |
+| --- | --- | --- |
+| `Upload` | storing uploads, checked against their real bytes | `references/uploads.md` |
+| `Security` | Content-Security-Policy with nonces; encryption, password hashing, random tokens | `references/security.md` |
+| `Localization`, `Formatting` | translation catalogs and pipes, the request locale, money and dates, Latte filters | `references/localization.md` |
+| `Data` | pagination, sorting and filtering from request input; hydration rules | `references/database.md` |
+| `Container` | auto-wired controllers through `withContainer()` (see Bootstrap) | |
+| `Event` | `EventDispatcher`; listen to `ExceptionEvent` (see Errors) | |
+
+`FileSystem`, `Exceptions`, the route cache and `Http\SseEmitter` are framework
+internals or niche helpers that most apps never call.
+
 ## Gotchas, each with its repro
 
-Every repro below was run on `0f65185`: the input, then the observed result.
-Repros marked *(upgrading from 0.13)* only concern an app written for
-`v0.13.0`; a new app can skip them.
+Every repro below shows the input, then the observed result on `2842a2b`. The
+PostgreSQL repros (23 to 28) were last run on `0f65185`; the database code has
+not changed since. Repros marked *(upgrading from 0.13)* only concern an app
+written for `v0.13.0`; a new app can skip them.
 
 **1. A misspelled section or key stops the boot.** Fix the spelling; keep one
 spelling per key.
@@ -839,6 +911,8 @@ in:  #[Get('/search?q={q}')]
 out: RouteSignatureException: Invalid route path "/search?q={q}": the request path ends at "?", so this route would only match "/search"; declare "/search" and read the query string from the request
 in:  #[WithoutMiddleware(CsrfMiddleware::class)]
 out: RouteMiddlewareException: Route "GET /hook" cannot skip "Zephyrus\Security\CsrfMiddleware": it is a framework security middleware. Exempt the path under security.csrf.exceptions instead
+in:  #[WithoutMiddleware(MaxBodySizeMiddleware::class)] on #[Post('/hook')]
+out: RouteMiddlewareException: Route "POST /hook" cannot skip "Zephyrus\Security\MaxBodySizeMiddleware": it is a framework security middleware
 ```
 
 **17. `build()` refuses a route middleware it cannot resolve.** Every name in
@@ -987,12 +1061,38 @@ in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
 out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
 ```
 
+**31. A NULL column into a non-nullable property is a `TypeError`.** Declare
+every nullable column as `?type` on the entity.
+
+```text
+in:  Project::build($row) with $row->tags = null and public array $tags
+out: TypeError: Cannot assign null to property Project::$tags of type array
+```
+
+**32. A reused `Mailer` keeps its recipients.**
+
+```text
+in:  $m->to('ada@example.com')->subject('A')->text('x'); $m->send(); $m->to('grace@example.com')
+out: getPhpMailer()->getToAddresses() lists ada@example.com and grace@example.com
+```
+
+**33. Formatter pipes in a translation use the app's `Formatter`, not the
+translation's locale.** For a per-request locale, set both (see
+`references/localization.md`).
+
+```text
+in:  localization.locale: en_CA; locale/fr/m.json {"total": "Total : {amount|money}"}; localize('total', ['amount' => 1234.5], 'fr')
+out: "Total : $1,234.50"
+in:  the same after App::setFormatter(new Formatter('fr_CA', 'CAD'))
+out: "Total : 1 234,50 $" (the two spaces the formatter writes are U+00A0)
+```
+
 ## Cheat sheet
 
 | Need | Write |
 | --- | --- |
 | Boot | `ApplicationBuilder::create()->withConfiguration($config, basePath: $root)->withRouter($router)->...->build()` |
-| Serve | `$app->handle(Request::fromGlobals(trustedProxies: $config->security->trustedProxies))->send()` |
+| Serve | `$app->handle(Request::fromGlobals(trustedProxies: $config->security->trustedProxies, trustedHeaders: $config->security->trustedHeaders))->send()` |
 | Load config | `Configuration::fromYamlFile($path, ['render' => RenderConfig::class])` |
 | Read config | `$config->security->maxBodySize`, `$config->database`, `$config->section('render')`, `config('render', 'directory')` |
 | Global middleware | `$builder = $builder->withMiddleware($m)` (first added runs outermost) |
@@ -1014,6 +1114,12 @@ out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tra
 | Insert with id | `insertRowGetId('INSERT ... RETURNING id', [...])` |
 | Exact money | `$db->registerTypeConversion('NUMERIC', fn (string $v): string => $v)` |
 | Escape outside Latte | `e($value)` |
+| Own 413 page | `new MaxBodySizeMiddleware($max, onFailure: fn (Request $r, BodyTooLarge $b): ?Response => ...)` |
+| 404 for a missing record | `return $this->abort(404)` or `throw new RouteNotFoundException('project')` |
+| Sign-in | `$session->regenerate()`, then store the user id |
+| Upload | `$uploader->store($request->file('avatar'), 'avatars')` (`references/uploads.md`) |
+| Encrypt a column | `Cryptography::encrypt($value, Cryptography::decodeKey($config->security->encryptionKey), context: ...)` |
+| CSP nonce | `ContentSecurityPolicyMiddleware($policy, nonceDirectives: ['script-src'])` + `<script nonce="{nonce()}">` |
 
 ## References
 
@@ -1023,3 +1129,5 @@ out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tra
 - Latte: https://latte.nette.org/
 - Runnable example: `examples/zephyrus/` in this repo (config, bootstrap,
   CSRF-protected form, JSON route, health probe)
+- In this skill: `references/uploads.md`, `references/security.md`,
+  `references/localization.md`, `references/database.md` (see Other modules)
