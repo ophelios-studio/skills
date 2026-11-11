@@ -16,6 +16,13 @@ app/Controllers/HomeController.php  # GET /, POST /greet, GET /api/hello/{name},
 app/Views/home.latte                # the page and its form
 ```
 
+## Core version
+
+It targets the core's `dev` branch (`dev-dev` on Packagist, last run against
+commit `2842a2b`). The latest tag, `v0.13.0`, lacks `MaxBodySizeMiddleware`,
+`CsrfConfig::fromSecurityConfig()` and `ApplicationBuilder::withRenderEngine()`,
+so the example does not run on it: keep `dev-dev`.
+
 ## Run
 
 Requires PHP 8.4+ with intl, mbstring, pdo, sodium and fileinfo.
@@ -50,6 +57,9 @@ curl -i -b jar.txt -d "_csrf_token=$TOKEN&name=" http://localhost:8000/greet
 
 head -c 2000000 /dev/zero | curl -i -b jar.txt -H "X-CSRF-Token: $TOKEN" --data-binary @- http://localhost:8000/greet
 # HTTP/1.1 413 Content Too Large ... {"error":"Request body too large."}
+
+head -c 2000000 /dev/zero | curl -i -b jar.txt -H 'Accept: text/html' -H "X-CSRF-Token: $TOKEN" --data-binary @- http://localhost:8000/greet
+# HTTP/1.1 413 Content Too Large ... content-type: text/plain; charset=utf-8 ... Request body too large.
 ```
 
 Every response carries the headers declared under `security.headers`
