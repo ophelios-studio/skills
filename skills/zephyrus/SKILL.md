@@ -717,10 +717,8 @@ constructor argument), `attach($path)` and `attachContent($bytes, 'report.pdf')`
 The application handles a `Request` in-process, so tests need no server. The
 test below runs on `examples/zephyrus` plus one controller that signs in
 (`App\Controllers\AccountController`, the sign-in step of the sessions
-section):
-
-Install PHPUnit with `composer require --dev phpunit/phpunit`, map `Tests\\` to
-`tests/` under `autoload-dev` in `composer.json`, then run
+section). Install PHPUnit with `composer require --dev phpunit/phpunit`, add
+`"Tests\\": "tests/"` under `autoload-dev.psr-4` in `composer.json`, then run
 `vendor/bin/phpunit tests/AppTest.php`.
 
 ```php
