@@ -27,18 +27,22 @@ try {
 
 - Nothing the browser sends decides acceptance: the MIME allowlist is matched
   against the type sniffed from the bytes (`ext-fileinfo`), the size against
-  the real file, and the stored extension comes from the sniffed type. A PHP
+  the real file. A PHP
   file named `shell.png` is refused: `Upload MIME type "text/x-php" is not
   allowed. Allowed MIME types: image/png`.
-- The name is random hex unless you pass a third argument (`$targetName`),
-  which goes through the same extension allowlist. An existing file is only
-  replaced with `overwriteExisting: true`.
+- The name is random hex unless you pass a third argument (`$targetName`). The
+  stored extension comes from the sniffed type only for a generated name. A
+  `$targetName` keeps its own extension, checked against `allowedExtensions`
+  alone, and with no `allowedExtensions` any extension passes. Never pass the
+  client's file name; when you pass a name, set `allowedExtensions` too. An
+  existing file is only replaced with `overwriteExisting: true`.
 - *(dev)* The default mover accepts only a genuine HTTP upload
   (`is_uploaded_file()`). Tests and command-line code inject their own:
 
 ```php
 $uploader = new Uploader(
     $root . '/storage/uploads',
+    allowedExtensions: ['png'],
     allowedMimeTypes: ['image/png'],
     fileMover: fn (string $from, string $to): bool => copy($from, $to),
 );

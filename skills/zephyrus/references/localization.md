@@ -56,8 +56,8 @@ a French catalog still prints `$1,234.50` until the formatter changes
 behind `format()`. A command-line script that never calls `build()` must call
 `App::setFormatter()` first. Built-in names: `money`, `decimal`, `percent`,
 `ordinal`, `spellOut`, `date`, `time`, `datetime`, `timeago`, `duration`,
-`filesize`, `list`, `truncate`; an unknown name throws `FormatterException`
-*(dev)*. Register your own with `$formatter->register('initials', fn (string $name): string => ...)`.
+`filesize`, `list`, `truncate`; an unknown name throws `FormatterException` (its message listing the
+built-in names is *(dev)*; earlier releases name only the formatter). Register your own with `$formatter->register('initials', fn (string $name): string => ...)`.
 
 In Latte, the formatter methods become filters only after
 `$latteEngine->registerFormatterFilters($formatter)`:

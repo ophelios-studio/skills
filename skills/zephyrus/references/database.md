@@ -11,6 +11,7 @@ use Zephyrus\Data\FilterRequest;
 use Zephyrus\Data\PaginationRequest;
 use Zephyrus\Data\SortRequest;
 
+// $request->query is the public array of the whole query string; $request->query('page') is the method reading one key.
 // GET /projects?page=1&per_page=500&sort=-name&status=active
 $page = PaginationRequest::fromArrayWithBounds($request->query, defaultPerPage: 25, maxPerPage: 100);
 $sort = SortRequest::fromQuery($request->query, ['name', 'created_at'], defaultColumn: 'name');
