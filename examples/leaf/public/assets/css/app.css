@@ -1,5 +1,5 @@
-/* Minimal theme using CSS variables — toggle by setting data-theme on <html>.
-   Pattern from leaf.ophelios.com itself: no preprocessor, no bundler. */
+/* Minimal theme using CSS variables: toggle by setting data-theme on <html>.
+   Same path as the bundled stylesheet, so it replaces it entirely. */
 
 :root,
 [data-theme="dark"] {

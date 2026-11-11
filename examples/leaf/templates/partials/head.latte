@@ -1,0 +1,77 @@
+{*
+  Override of the bundled app/Views/partials/head.latte: middle dots
+  instead of em-dashes in og:title and twitter:title, plus canonical,
+  hreflang and og:image, which the bundled head does not emit.
+*}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="leaf-base-url" content="{$leafBaseUrl}">
+<meta n:if="($pageDescription ?? '') !== ''" name="description" content="{$pageDescription}">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{$title ?? ''} · {$leafName ?? ''}">
+<meta n:if="($pageDescription ?? '') !== ''" property="og:description" content="{$pageDescription}">
+<meta property="og:site_name" content="{$leafName ?? ''}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{$title ?? ''} · {$leafName ?? ''}">
+<meta n:if="($pageDescription ?? '') !== ''" name="twitter:description" content="{$pageDescription}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                deep: 'var(--bg-deep)',
+                surface: 'var(--bg-surface)',
+                elevated: 'var(--bg-elevated)',
+                border: 'var(--border)',
+                'border-accent': 'var(--border-accent)',
+                body: 'var(--text)',
+                bright: 'var(--text-bright)',
+                muted: 'var(--text-muted)',
+                accent: 'var(--accent)',
+                'accent-light': 'var(--accent-light)',
+                'accent-glow': 'var(--accent-glow)',
+            },
+            fontFamily: {
+                body: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+            },
+        },
+    },
+}
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+<link rel="stylesheet" href="{$leafBaseUrl}/assets/css/app.css">
+<script src="{$leafBaseUrl}/assets/js/theme.js"></script>
+{if defined('DEV_SERVER')}
+<script>
+(function() {
+    let lastHash = null;
+    async function check() {
+        try {
+            const r = await fetch('/__dev/reload');
+            const d = await r.json();
+            if (lastHash && d.hash !== lastHash) location.reload();
+            lastHash = d.hash;
+        } catch(e) {}
+    }
+    check();
+    setInterval(check, 1500);
+})();
+</script>
+{/if}
+{var $dl = $defaultLocale ?? 'en'}
+{var $prefix = ($currentLocale ?? $dl) === $dl ? '' : '/' . $currentLocale}
+{var $path = rtrim($requestPath ?? (isset($section, $slug) ? '/' . $section . '/' . $slug : ($pagePath ?? '')), '/')}
+<link n:if="$leafProductionUrl !== ''" rel="canonical" href="{$leafProductionUrl}{$prefix}{$path}/">
+{if $leafProductionUrl !== ''}
+{foreach $supportedLocales ?? [] as $loc}
+<link rel="alternate" hreflang="{$loc}" href="{$leafProductionUrl}{$loc === $dl ? '' : '/' . $loc}{$path}/">
+{/foreach}
+<link rel="alternate" hreflang="x-default" href="{$leafProductionUrl}{$path}/">
+<meta property="og:image" content="{$leafProductionUrl}/assets/og/og-default.png">
+{/if}

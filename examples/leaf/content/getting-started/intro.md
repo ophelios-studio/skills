@@ -11,11 +11,12 @@ This is a minimal Leaf project. The page you're reading is rendered from
 
 ## What's here
 
-- `config.yml` — site configuration (the `leaf:` section drives
+- `config.yml`: site configuration (the `leaf:` section drives
   everything)
-- `content/{section}/{slug}.md` — Markdown pages, organized by section
-- `templates/` — optional Latte/PHP/HTML overrides of the bundled theme
-- `public/` — static assets copied verbatim to `dist/` at build time
+- `content/{section}/{slug}.md`: Markdown pages, organized by section
+- `templates/`: Latte overrides of the bundled theme, at the exact
+  bundled path
+- `public/`: static assets copied to `dist/` at build time
 
 ## Run it
 
