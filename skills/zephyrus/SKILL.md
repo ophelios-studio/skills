@@ -271,8 +271,9 @@ value (gotcha 3):
 | `headers` | `new SecureHeadersMiddleware($config->security->headers)` |
 | `csrf` (enabled) | `new CsrfMiddleware($tokens, CsrfConfig::fromSecurityConfig($config->security))` |
 
-- Only declared keys are checked. Leaving `max_body_size` out means no limit
-  and no check.
+- Only declared keys are checked. `max_body_size` still defaults to `2097152`
+  when you leave it out, but nothing enforces it unless `MaxBodySizeMiddleware`
+  is mounted: with no middleware, requests of any size reach your routes.
 - A middleware registered under a route name, or wrapped inside another
   middleware, does not count. When a protection really lives elsewhere (a
   reverse proxy, a wrapping middleware), say so:
@@ -430,7 +431,7 @@ final class RequireUserMiddleware implements MiddlewareInterface
 {
     public function process(Request $request, callable $next): Response
     {
-        $userId = $request->headers()->get('X-User-Id'); // stand-in for a session lookup
+        $userId = session('user_id');
         if ($userId === null) {
             return Response::json(['error' => 'Sign in first.'], 401);
         }
@@ -455,8 +456,12 @@ refuses a route that names a middleware or group it cannot resolve (gotcha 17).
 `Flash`). Mount it before `CsrfMiddleware`, as in the bootstrap above. Without
 it, `session([...])` writes and flash messages are dropped silently (gotcha 19).
 Tests and CLI scripts use array storage: `new SessionManager([])`. After a
-sign-in, call `$session->regenerate()` before storing the user id (a new
-session id defeats fixation); on sign-out, `$session->destroy()`, which throws
+sign-in, call `$session->regenerate()` and the token manager's `regenerate()`
+before storing the user id: a new session id defeats fixation, a new token
+stops one read from the fixed session from staying valid. Take the session
+from `$request->attribute('session')` (set by `SessionMiddleware`) and wrap it
+in `new SessionCsrfTokenManager($session)`, which shares the stored token with
+the one in your bootstrap (same default key). On sign-out, `$session->destroy()`, which throws
 `SessionException` when the store refuses.
 
 To keep sessions in PostgreSQL, register `DatabaseSessionHandler` after
@@ -576,6 +581,8 @@ A handler may return `null` to keep the built-in answer. To let Tracy show an
 error in development, rethrow the same object:
 
 ```php
+$debug = $builder->isDebugEnabledForBoot();
+
 $builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwable $e, Request $request) use ($debug): ?Response {
     if ($debug) {
         throw $e; // the same object: handle() rethrows it, so Tracy can show it
@@ -584,6 +591,15 @@ $builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwabl
     return Response::html('<h1>Something went wrong</h1>', 500);
 });
 ```
+
+Take `$debug` from `$builder->isDebugEnabledForBoot()` on the fully configured
+builder, never from `$config->application->debug`: in production and staging
+`build()` turns Tracy off but leaves that value `true`, and a rethrow without
+Tracy reaches PHP's own handler, which prints the message, server paths and
+trace whenever `display_errors` is on. "Fully configured" means after
+`withConfiguration()` (it returns `false` before) and after
+`withProductionDebugAcknowledged()` if you use it (in a production-like
+environment it is `true` only then).
 
 A handler that throws anything else yields the fixed 500. With
 `application.debug: true`, Tracy only shows itself to loopback clients. Behind
@@ -697,22 +713,122 @@ constructor argument), `attach($path)` and `attachContent($bytes, 'report.pdf')`
 
 ## Testing
 
-The application handles a `Request` in-process, so tests need no server:
+The application handles a `Request` in-process, so tests need no server. The
+test below runs on `examples/zephyrus` plus one controller that signs in
+(`App\Controllers\AccountController`, the sign-in step of the sessions
+section):
 
 ```php
-$app = Kernel::application($root, Configuration::fromYamlFile($root . '/config.yml'));
+<?php
 
-$response = $app->handle(Request::fromArray('GET', '/api/hello/ada'));
-assert($response->status === 200);
-assert(json_decode($response->body, true) === ['message' => 'Hello, ada']);
+declare(strict_types=1);
 
-$refused = $app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada']));
-assert($refused->status === 403); // no CSRF token
+namespace App\Controllers;
+
+use Zephyrus\Controller\Controller;
+use Zephyrus\Http\Request;
+use Zephyrus\Http\Response;
+use Zephyrus\Routing\Attribute\Get;
+use Zephyrus\Routing\Attribute\Post;
+use Zephyrus\Session\SessionCsrfTokenManager;
+
+final class AccountController extends Controller
+{
+    #[Post('/sign-in')]
+    public function signIn(Request $request): Response
+    {
+        $session = $request->attribute('session');
+        $session->regenerate();
+        (new SessionCsrfTokenManager($session))->regenerate();
+        $session->set('user_id', 42);
+
+        return $this->redirect('/me');
+    }
+
+    #[Get('/me')]
+    public function me(): Response
+    {
+        return $this->json(['user' => session('user_id')]);
+    }
+}
 ```
 
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Tests;
+
+use App\Kernel;
+use PHPUnit\Framework\TestCase;
+use Zephyrus\Core\App;
+use Zephyrus\Core\Application;
+use Zephyrus\Core\Config\Configuration;
+use Zephyrus\Http\Request;
+
+final class AppTest extends TestCase
+{
+    private static Application $app;
+
+    public static function setUpBeforeClass(): void
+    {
+        $root = dirname(__DIR__);
+        self::$app = Kernel::application($root, Configuration::fromYamlFile($root . '/config.yml'));
+    }
+
+    protected function tearDown(): void
+    {
+        App::reset();
+    }
+
+    public function testAJsonRouteAnswersWithItsPayload(): void
+    {
+        $response = self::$app->handle(Request::fromArray('GET', '/api/hello/ada'));
+
+        self::assertSame(200, $response->status);
+        self::assertSame(['message' => 'Hello, ada'], json_decode($response->body, true));
+    }
+
+    public function testAPostWithoutACsrfTokenIsRefused(): void
+    {
+        $response = self::$app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada']));
+
+        self::assertSame(403, $response->status);
+    }
+
+    public function testAPostCarryingTheTokenFromAPreviousGetIsAccepted(): void
+    {
+        $page = self::$app->handle(Request::fromArray('GET', '/'));
+        preg_match('/name="_csrf_token" value="([0-9a-f]+)"/', $page->body, $found);
+
+        $response = self::$app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada', '_csrf_token' => $found[1]]));
+
+        self::assertSame(200, $response->status);
+    }
+
+    public function testTheSessionCarriesAcrossTwoRequests(): void
+    {
+        $page = self::$app->handle(Request::fromArray('GET', '/'));
+        preg_match('/name="_csrf_token" value="([0-9a-f]+)"/', $page->body, $found);
+
+        $signedIn = self::$app->handle(Request::fromArray('POST', '/sign-in', body: ['_csrf_token' => $found[1]]));
+        $me = self::$app->handle(Request::fromArray('GET', '/me'));
+
+        self::assertSame(302, $signedIn->status);
+        self::assertSame(['user' => 42], json_decode($me->body, true));
+    }
+}
+```
+
+The application is built once per class and `App::reset()` in `tearDown()`
+clears the statics between tests; the next request re-registers them. In-process
+there is no cookie to carry: `handle()` returns no `Set-Cookie`, and the PHP
+session stays open for the whole process, so a GET followed by a POST is the
+same session, and the token read from the page is the one the POST must send.
+
 `Request::fromArray()` takes the decoded body in `body:`; it does not decode a
-JSON `rawBody:` (gotcha 21). `App` holds per-request statics
-(`App::reset()` clears them between tests).
+JSON `rawBody:` (gotcha 21).
 
 ## Other modules
 
@@ -1116,7 +1232,7 @@ out: "Total : 1 234,50 $" (the two spaces the formatter writes are U+00A0)
 | Escape outside Latte | `e($value)` |
 | Own 413 page | `new MaxBodySizeMiddleware($max, onFailure: fn (Request $r, BodyTooLarge $b): ?Response => ...)` |
 | 404 for a missing record | `return $this->abort(404)` or `throw new RouteNotFoundException('project')` |
-| Sign-in | `$session->regenerate()`, then store the user id |
+| Sign-in | `$session->regenerate()` and `(new SessionCsrfTokenManager($session))->regenerate()`, then store the user id |
 | Upload | `$uploader->store($request->file('avatar'), 'avatars')` (`references/uploads.md`) |
 | Encrypt a column | `Cryptography::encrypt($value, Cryptography::decodeKey($config->security->encryptionKey), context: ...)` |
 | CSP nonce | `ContentSecurityPolicyMiddleware($policy, nonceDirectives: ['script-src'])` + `<script nonce="{nonce()}">` |
