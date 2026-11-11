@@ -461,8 +461,9 @@ before storing the user id: a new session id defeats fixation, a new token
 stops one read from the fixed session from staying valid. Take the session
 from `$request->attribute('session')` (set by `SessionMiddleware`) and wrap it
 in `new SessionCsrfTokenManager($session)`, which shares the stored token with
-the one in your bootstrap (same default key). On sign-out, `$session->destroy()`, which throws
-`SessionException` when the store refuses.
+the one in your bootstrap (the same session key as the CSRF middleware: pass
+yours as the second argument if your bootstrap set a custom one). On sign-out,
+`$session->destroy()`, which throws `SessionException` when the store refuses.
 
 To keep sessions in PostgreSQL, register `DatabaseSessionHandler` after
 `new SessionManager()` and before `build()`:
@@ -718,6 +719,10 @@ test below runs on `examples/zephyrus` plus one controller that signs in
 (`App\Controllers\AccountController`, the sign-in step of the sessions
 section):
 
+Install PHPUnit with `composer require --dev phpunit/phpunit`, map `Tests\\` to
+`tests/` under `autoload-dev` in `composer.json`, then run
+`vendor/bin/phpunit tests/AppTest.php`.
+
 ```php
 <?php
 
@@ -737,6 +742,7 @@ final class AccountController extends Controller
     #[Post('/sign-in')]
     public function signIn(Request $request): Response
     {
+        // Test stand-in: a real sign-in checks the credentials before this point.
         $session = $request->attribute('session');
         $session->regenerate();
         (new SessionCsrfTokenManager($session))->regenerate();
@@ -829,12 +835,14 @@ final class AppTest extends TestCase
 }
 ```
 
-The application is built once per class; the next request re-registers the
-statics `App::reset()` clears. In-process there is no cookie to carry:
-`handle()` returns no `Set-Cookie`, so a GET followed by a POST is the same
-session, and the token read from the page is the one the POST must send. That
-session is process-wide, so `tearDown()` empties `$_SESSION` as well as the
-statics.
+The application is built once per class. `App::reset()` clears the statics
+`App` holds (configuration, session, formatter, asset, URL generator,
+translator, nonce), which the next request registers again. `$_SESSION = []` is
+a separate step: in-process there is no cookie to carry (`handle()` returns no
+`Set-Cookie`), the PHP session lives for the whole process, and `reset()` does
+not touch it, so without that line a test signed in earlier leaks into the next
+one. The same process-wide session is why a GET followed by a POST shares one
+CSRF token.
 
 `Request::fromArray()` takes the decoded body in `body:`; it does not decode a
 JSON `rawBody:` (gotcha 21).
