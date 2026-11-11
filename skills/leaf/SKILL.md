@@ -1,608 +1,451 @@
 ---
 name: leaf
-description: Use when working in a Zephyrus Leaf project — the static-site generator built on the Zephyrus PHP framework that powers leaf.ophelios.com itself. Triggers on projects with a leaf section in config.yml, references to `zephyrus-framework/leaf-core`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI commands, or a project shape matching either tier — Binary CLI (bare content + templates + public + config.yml, no app or vendor folders) or Composer (full Zephyrus app extending `Leaf\Kernel`). Covers both tiers, the BuildCommand pipeline, multi-locale URL semantics with default-locale-no-prefix, per-locale search indexes, automatic sitemap and robots and hreflang generation, the `DEV_SERVER` constant for live-reload templates, and empirical patterns from the production `zephyrus-leaf-site` — post-build hook timing quirk, exact-match template overrides, dist-committed-to-git deploy pattern, and Tailwind-CDN-with-CSS-vars theming.
+description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps: canonical URLs that all point home, custom pages missing from multi-locale builds, PHP warnings baked into the HTML, and what eject leaves broken.
 ---
 
 # Zephyrus Leaf
 
-A static site generator for documentation, landings, and blogs.
-Authored Markdown + optional Latte/PHP/HTML templates → deployable static
-HTML in one command. The framework's own docs site at
-**[leaf.ophelios.com](https://leaf.ophelios.com)** is itself built with
-Leaf — so empirical patterns here are drawn directly from the production
-project at `zephyrus-leaf-site`.
+A static site generator for documentation, landings and blogs: Markdown
+plus Latte templates in, plain HTML in `dist/` out. Every page is rendered
+through a real Zephyrus application, then written to disk.
 
-## Two distributions (know which one you're in)
+Verified against the leaf CLI **v0.1.6** (latest release), which embeds
+leaf-core `main` (`da38382`; leaf-core has no tags, Packagist serves only
+`dev-main`) and the `zephyrus-framework/leaf` template (`4a6d56b`).
+Everything below holds for that release unless marked otherwise.
 
-Leaf ships two tiers that share the same `zephyrus-framework/leaf-core`
-library:
+## Two tiers (know which one you're in)
 
-| Tier | Project shape | Build command | Dev command |
-|------|--------------|---------------|-------------|
-| **Binary CLI** (recommended for most) | `content/`, `templates/` (optional overrides), `public/`, `config.yml` — no `app/`, `bin/`, `vendor/`, `composer.json` | `leaf build` | `leaf dev` |
-| **Composer template** (PHP devs) | Full Zephyrus project: `app/Controllers`, `app/Models/Core/Application.php` (extends `Leaf\Kernel`), `bin/build.php`, `vendor/`, `composer.json` | `composer build` | `composer dev` |
+Both tiers run the same leaf-core and the same bundled theme.
 
-**How to tell which one you're in:** if the project has `app/Controllers/`
-and `composer.json`, it's Composer tier. If it has only `content/`,
-`templates/`, `public/`, and `config.yml`, it's Binary tier.
+| Tier | Project shape | Build | Dev |
+|------|---------------|-------|-----|
+| **Binary CLI** (default) | `config.yml`, `content/`, `public/`, `locale/`, optional `templates/`; no `composer.json`, no `app/` | `leaf build` | `leaf dev` |
+| **Composer** (PHP devs) | Full Zephyrus app: `app/Controllers/`, `app/Models/Core/Application.php` (extends `Leaf\Kernel`), `app/Views/`, `bin/build.php`, `bin/router.php`, `public/index.php`, `composer.json` | `composer build` | `composer dev` |
 
-**Migration path:** Binary-tier user runs `leaf eject` to convert to
-Composer-tier. One-way. `content/`, `templates/`, `public/`, `config.yml`
-survive; `app/`, `bin/`, `composer.json` are written fresh.
+`composer.json` plus `app/` means Composer tier. Otherwise Binary tier.
 
-## Binary CLI commands
+**Composer tier details** (starting a project, `leaf eject` and what it
+leaves broken, `Application`, `bin/build.php`, `BuildCommand`,
+`StaticSiteBuilder`, `ContentLoader`, `composer dev`): read
+[`references/composer-tier.md`](references/composer-tier.md) when the
+project has `composer.json`, or before running `leaf eject`.
 
-```bash
-leaf init <name>      # Scaffold a new site (content/, public/, config.yml)
-leaf dev [--addr]     # Serve with live reload (default :8080, watches content/templates/public/config)
-leaf build [--dir]    # Render to dist/
-leaf eject            # Convert to Composer tier (writes framework files into cwd)
-leaf version
-leaf help
-```
-
-### Flag position matters
-
-`leaf init` flags MUST come **before** the positional arg. The Go flag
-library accepts both `-force` and `--force` syntaxes, but:
-
-```bash
-leaf init -force .          # works
-leaf init --force .          # rejected ("not empty")
-leaf init . -force           # rejected ("not empty")
-leaf init . --force          # rejected ("not empty")
-```
-
-### Scaffold-into-non-empty-dir
-
-`leaf init . -force` works inside a non-empty directory IF you pass
-`-force`. Hidden directories (`.git/`, `.idea/`) and existing
-non-template files (`LICENSE`, `README.md`) are preserved; only files
-the scaffold owns get overwritten.
-
-### Default scaffold content
-
-`leaf init` drops three placeholder pages under
-`content/getting-started/`:
-
-- `introduction.md`
-- `writing-content.md`
-- `deployment.md`
-
-Plus default CSS at `public/assets/css/app.css` and four JS files at
-`public/assets/js/{theme,sidebar,search,copy-code}.js`. The CSS file is
-yours to edit (it carries the design tokens). The JS files are the
-toggles for theme, sidebar, search, and code-copy; usually you keep
-them as-is. **Delete the three placeholder Markdown files** before
-adding your real content; otherwise they ship with your site.
-
-Install:
+## Install and CLI
 
 ```bash
 curl -fsSL https://leaf.ophelios.com/install.sh | sh
 ```
 
-The binary embeds the framework and scaffolds. **No PHP or Composer
-required at install time.** At **build time** the binary shells out to
-system `php` (≥ 8.4 with `intl`, `mbstring`, `sodium`, `pdo`) — the
-"zero-dependency" claim refers to install only, not build. FrankenPHP
-static link is on the roadmap; not shipped yet.
+The script installs the latest release to `/usr/local/bin`. Override with
+`LEAF_VERSION=v0.1.6` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
+`curl -fsSL https://leaf.ophelios.com/install.sh | LEAF_PREFIX="$HOME/bin" sh`.
 
-## Application Bootstrap (Composer tier only)
+Installing needs no PHP. **Building does**: the binary shells out to the
+`php` on `PATH` (8.4, with `intl`, `mbstring` and `tokenizer`; without
+`tokenizer` every page fails with HTTP 500). FrankenPHP embedding is not
+shipped.
 
-Binary-tier users don't see this — it lives inside the binary.
-Composer-tier projects extend `Leaf\Kernel`:
-
-```php
-use Leaf\Kernel;
-
-final class Application extends Kernel
-{
-    protected function createController(string $class): object
-    {
-        if ($class === MyController::class) {
-            return new MyController($this->contentLoader, $this->leafConfig);
-        }
-        return new $class();
-    }
-}
+```bash
+leaf init [--force] <dir>        # scaffold a site into <dir> (use . for the current dir)
+leaf dev [--dir .] [--addr :8080]
+leaf build [--dir .] [--keep-tmp]
+leaf eject [--dir .] [--force]   # convert to the Composer tier (one-way)
+leaf version                     # also -v, --version
+leaf help                        # also -h, --help
 ```
 
-### Kernel overridable methods
+**Flags go before the positional argument.** Go's flag parser stops at the
+first non-flag, so `leaf init --force .` and `leaf init -force .` work,
+while `leaf init . --force` refuses with
+`target <dir> is not empty (use --force to overwrite)`.
 
-- `createController(string $class): object` — DI for controllers
-- `registerControllers(Router $router): Router` — customize discovery (default: scans `App\Controllers`)
+`leaf init` writes `config.yml`, three placeholder pages in
+`content/getting-started/` (`introduction.md`, `writing-content.md`,
+`deployment.md`), `locale/en/general.json`, `public/assets/css/app.css`
+(the design tokens, yours to edit) and five scripts in `public/assets/js/`
+(`theme`, `sidebar`, `search`, `copy-code`, `lang-switcher`). With
+`--force` it overwrites only those files: `.git/`, `README.md` and
+`LICENSE` survive. **Delete the placeholder pages** or they ship.
 
-### Kernel protected properties (available in `createController`)
+`leaf build` copies the bundled framework and your project into a temp dir
+(`/tmp/leaf-build-*`), runs the PHP build there, then **replaces your
+`dist/` wholesale**. A failed build leaves the previous `dist/` untouched.
+`--keep-tmp` keeps the merged tree; the `Built ... -> /tmp/leaf-build-.../dist`
+line names it, and its `app/Views/` holds the bundled templates to copy
+from.
 
-`$this->config`, `$this->leafConfig`, `$this->renderEngine`,
-`$this->contentLoader`, `$this->searchIndexBuilder`,
-`$this->markdownParser`, `$this->translator` (null if no localization),
-`$this->translationExtension` (null if no localization).
+## config.yml
 
-## Template override pattern (the override surface for both tiers)
+Same file on both tiers. The CLI refuses to build without `leaf.name`
+(`leaf build: leaf.name is required`).
 
-Both tiers support user overrides via a `templates/` directory at the
-project root. Drop a file at `templates/layouts/docs.latte` or
-`templates/partials/nav.latte` and the build merges it on top of the
-bundled theme. Binary-tier users rely on this for customization — they
-can't edit `app/Views/` directly. File formats: `.latte`, `.php`, `.html`
-(HTML is copy-through, no variable interpolation).
+```yaml
+application:
+  environment: !env APP_ENV, dev
+  debug: !env APP_DEBUG, true        # see "PHP warnings end up in the HTML"
 
-### Critical empirical gotcha — exact path match required
+localization:
+  locale: "en"                       # default locale, built at the root
+  supported_locales:
+    - "en"
+  locale_path: "locale"              # empty disables localize() and $currentLocale
+  timezone: "UTC"
 
-Bundle has `app/Views/partials/nav.latte` → override is
-`templates/partials/nav.latte`.
-Bundle has `app/Views/layouts/docs.latte` → override is
-`templates/layouts/docs.latte`.
+render:                              # leave as scaffolded: templates/ maps onto app/Views
+  engine: "latte"
+  directory: "app/Views"
+  cache: "cache/latte"
+  mode: "always"
 
-**Mismatch (typo, wrong subdir, dropped slash) means the override is
-silently ignored** and the bundled default ships. No warning, no log.
-Verify your override took effect by changing something visible in the
-file and rebuilding. If `dist/` doesn't reflect the change, your path is
-wrong.
+leaf:
+  name: "My Project"                 # required by the CLI
+  version: "1.0.0"                   # quote it: an unquoted 1.0 renders as "1"
+  description: "A documentation site"
+  github_url: ""
+  content_path: "content"
+  sections:                          # sidebar order AND filter, see Content
+    getting-started: "Getting Started"
+  output_path: "dist"
+  base_url: ""                       # path prefix when served from a subdirectory
+  production_url: "https://example.com"   # no trailing slash; enables sitemap and robots
+  author: ""
+  author_url: ""
+  license: "MIT"
+  post_build:                        # optional, see Post-build hooks
+    - "./scripts/after-build.sh"
+```
 
-### Empirical gotcha, bundled templates emit em-dashes
+Defaults when a key is missing: `name` "My Project", `version` "0.1.0",
+`content_path` "content", `output_path` "dist", `license` "MIT", the
+rest empty.
 
-The bundled `app/Views/layouts/docs.latte` and `app/Views/partials/head.latte`
-both use em-dash (U+2014) as the separator in `<title>` and the
-`og:title` / `twitter:title` meta tags:
+Every template receives `$leafName`, `$leafVersion`, `$leafDescription`,
+`$leafGithubUrl`, `$leafAuthor`, `$leafAuthorUrl`, `$leafLicense`,
+`$leafBaseUrl` and `$leafProductionUrl` (both without trailing slash). A
+variable the controller passes under the same name wins.
+
+`base_url: "/docs"` prefixes the bundled theme's links and assets, sidebar
+and search URLs, and root-relative `href`/`src` in Markdown. The layout of
+`dist/` does not change: deploy its content at `/docs`. Your own template
+links need `{$leafBaseUrl}` by hand.
+
+## Content
+
+Pages live at `content/{section}/{slug}.md` and build to
+`/{section}/{slug}/index.html`. Only that depth is scanned.
+
+```markdown
+---
+title: "Introduction"
+order: 1
+description: "Used for the meta description"
+---
+
+Your content here.
+```
+
+- `order` sorts pages inside a section (default 99, ties by filename).
+- Without `description`, the meta description is the first 160 characters
+  of the page text, heading permalink `#` included. Set it.
+- Markdown is CommonMark plus GFM (tables, strikethrough, autolinks, task
+  lists). Raw HTML passes through, except the tags GFM disallows
+  (`<script>`, `<style>`, `<iframe>`, `<textarea>`, `<title>`, ...), which
+  come out escaped. `##` to `####` get an `id` from the heading text and a
+  `#` permalink, and feed the page's table of contents.
+- The sidebar and the previous/next links come from a scan of `content/`,
+  not from any sidebar file.
+- **`leaf.sections` orders and filters.** When it is set, a section folder
+  it does not list still builds, and still lands in the search index and
+  the sitemap, but never appears in the sidebar or the previous/next chain.
+  Without `leaf.sections`, every section shows, alphabetically, labelled
+  from the slug (`getting-started` becomes "Getting Started").
+- **Use hyphens, never underscores, in section folder names.** Config keys
+  are camelCased on load, so `my_notes:` in `leaf.sections` never matches
+  the `content/my_notes/` folder and the section vanishes from the sidebar.
+
+## Templates: overriding the bundled theme (Binary tier)
+
+`templates/<path>` replaces `app/Views/<path>` of the bundled theme, file
+by file. Only the CLI does this merge: on the Composer tier, edit
+`app/Views/` directly (`composer build` ignores `templates/`).
+
+- **The path must match exactly.** `templates/partial/nav.latte` (typo) is
+  silently ignored and the bundled file ships. Change something visible and
+  rebuild to prove an override took.
+- **Latte only.** The engine renders `.latte`; a `templates/partials/nav.php`
+  or `.html` is copied and never used.
+- **An override replaces the whole file.** Start from the bundled copy
+  (`leaf build --keep-tmp`, then copy from `<tmp>/app/Views/`).
+- **`{include}` and `{layout}` paths resolve from the including file.**
+  From `layouts/docs.latte`, write `{include '../partials/head.latte'}`;
+  `{include 'partials/head.latte'}` looks in `layouts/partials/` and the
+  page fails with HTTP 500.
+- **`public/` layers the same way**: a file at a bundled path
+  (`public/assets/css/app.css`, `public/assets/js/search.js`) replaces the
+  bundled one, and deleting your copy brings the bundled one back.
+
+Bundled files and what they receive:
+
+| File | Used for | Variables (besides the globals) |
+|------|----------|---------------------------------|
+| `docs/page.latte` (layout `layouts/docs.latte`) | every Markdown page | `title`, `pageDescription`, `section`, `slug`, `content`, `sidebar`, `toc`, `prevPage`, `nextPage` |
+| `landing.latte` (layout `layouts/landing.latte`) | `/` | `title` (= `leaf.name`) |
+| `404.latte` | `/404`, written to `dist/404.html` | `title` |
+| `pages/{name}.latte` | custom pages | `title`, `pageTitle`, `pagePath` |
+| `partials/head.latte`, `partials/nav.latte` | both layouts | inherited |
+| `partials/sidebar.latte`, `toc.latte`, `search-modal.latte` | docs layout | inherited |
+| `partials/footer.latte` | landing layout only | inherited |
+
+The bundled theme loads Tailwind from its CDN with an inline config mapped
+to CSS variables (`--bg-deep`, `--bg-surface`, `--text`, `--accent`, ...)
+defined in `public/assets/css/app.css`; `theme.js` toggles `data-theme`
+on `<html>`. No bundler, no asset hashing.
+
+**The bundled titles use an em-dash** (U+2014) between `{$title}` and
+`{$leafName}`: in `<title>` in `layouts/docs.latte`, and in `og:title` and
+`twitter:title` in `partials/head.latte`. A project that bans em-dashes
+must override both files and swap the separator (a middle dot `·` or a
+colon).
+
+## Custom pages
+
+`templates/pages/{name}.latte` builds to `/{name}/` (Composer tier:
+`app/Views/pages/`).
 
 ```latte
-<title>{$title ?? 'Docs'} — {$leafName ?? 'Docs'}</title>
-<meta property="og:title" content="{$title ?? ''} — {$leafName ?? ''}">
+{layout '../layouts/landing.latte'}
+{block content}
+<main>About {$leafName}, served at {$pagePath}</main>
+{/block}
 ```
 
-If your project enforces a no-em-dash rule (as `zephyrus-leaf-site` and
-the Immunity docs site do), you **must** override both files:
+- `.latte` only, no subdirectories.
+- The name must match `[a-z0-9][a-z0-9-]*` (`2fa` is fine). Any other name
+  (`About_Us.latte`) **fails the whole build** with
+  `/About_Us returned HTTP 404`.
+- `templates/pages/404.latte` is shadowed by the `/404` route: override
+  `templates/404.latte` instead.
+- **Custom pages are not built on multi-locale sites** (more than one
+  supported locale): no error, the page is just missing from `dist/`.
+  Single-locale sites only, for now.
 
-- `templates/layouts/docs.latte`
-- `templates/partials/head.latte`
+## Build pipeline
 
-Substitute a middle dot (`·`), an ASCII bullet, or a colon as the
-separator. The rest of the bundled markup is em-dash-clean.
+What `leaf build` and `composer build` run (`Leaf\BuildCommand::run()`),
+in order:
 
-### Empirical gotcha, bundled head.latte ships without `<link rel="canonical">` or `og:image`
+1. Collect paths: every `GET` route without a `{parameter}`, every
+   `content/*/*.md`, plus `addPaths()` (custom pages arrive this way).
+   `/search.json` is always excluded; `/` too when no `GET /` route exists
+   (the bundled theme has one, the landing page).
+2. Render each path through the full application (middleware, controllers,
+   templates). A 3xx becomes a meta-refresh page pointing at its
+   `Location`, unchanged (not locale-prefixed). Any other non-200 is an
+   error. Multi-locale: once per locale, default locale at the root.
+3. Copy `public/` into the output (`index.php` and `.htaccess` skipped).
+4. Any error: print `<path> returned HTTP <code>` (no exception detail),
+   exit 1, stop.
+5. Move `/404/index.html` to `/404.html` (default locale only; other locales
+   keep `/{locale}/404/index.html`).
+6. Write `search.json` (multi-locale: also `/{locale}/search.json`).
+7. Single-locale without a `GET /` route: write `index.html` redirecting to
+   the first page.
+8. If `production_url` is set: `sitemap.xml` and `robots.txt`.
+9. `leaf.post_build` hooks (Composer tier here; the CLI runs them later).
+10. `onPostBuild()` callbacks (Composer tier).
 
-The bundled `partials/head.latte` carries `og:type`, `og:title`,
-`og:description`, `og:site_name`, `twitter:card`, `twitter:title`,
-`twitter:description`. It does **not** ship `<link rel="canonical">`
-or `og:image` / `twitter:image`. Both are SEO-essential.
+### PHP warnings end up in the HTML
 
-Override `templates/partials/head.latte` and add:
+The scaffold sets `debug: !env APP_DEBUG, true`. With debug on, a template
+warning (an undefined variable, a property read on null) is **written into
+the built page** as `Warning: ... in /tmp/leaf-build-.../cache/latte/...`
+while the build reports OK. Build production output with
+`APP_DEBUG=false leaf build`, or check with `grep -rl 'Warning:' dist/`.
 
-```latte
-<link n:if="($leafProductionUrl ?? '') !== ''" rel="canonical" href="{$leafProductionUrl}{$requestPath ?? '/'}">
-<meta property="og:image" content="{$leafProductionUrl ?? ''}/assets/og/og-default.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:image" content="{$leafProductionUrl ?? ''}/assets/og/og-default.png">
+## Post-build hooks
+
+```yaml
+leaf:
+  post_build:
+    - "./scripts/one.sh"                  # executable, no arguments
+    - ["php", "scripts/two.php", "--fr"]  # argv form, no shell
 ```
 
-Drop the OG image at `public/assets/og/og-default.png` (1200x630). The
-canonical link reads `requestPath` from the controller (Composer tier);
-on Binary tier the framework injects it automatically per page.
+- Both tiers. Each entry runs in order with the project root as working
+  directory and the build's stdio; the first non-zero exit fails the build.
+- **Binary tier: hooks run after the new `dist/` is published**, from your
+  real project root, so they can edit `dist/` (sitemap included). A
+  failing hook exits non-zero but `dist/` is already replaced. `leaf dev`
+  runs them on every rebuild.
+- **A hook that writes into `public/` only reaches `dist/` on the next
+  build**: `public/` was copied before hooks run. Write to `dist/` directly
+  when the file must ship now.
+- `LEAF_SKIP_HOOKS=1` makes leaf-core skip them (the CLI sets it, then runs
+  them itself).
 
-## Building static sites
-
-### `leaf build` (Binary tier)
-
-Default behavior. No PHP code to write. The binary merges embedded
-defaults + user project into a tempdir, runs the standard pipeline,
-copies `dist/` back out.
-
-### `BuildCommand` (Composer tier)
-
-`bin/build.php` is the file the user owns:
-
-```php
-define('ROOT_DIR', dirname(__DIR__));
-require ROOT_DIR . '/vendor/autoload.php';
-
-use App\Models\Core\Application;
-use Leaf\BuildCommand;
-
-$app = new Application();
-$command = new BuildCommand($app);
-
-// Add parameterized routes not discoverable from the router
-$command->addPaths(['/blog', '/blog/my-post']);
-
-// Custom post-build steps
-$command->onPostBuild(function ($result, $outputDir) {
-    passthru('node bin/generate-og-images.js');
-});
-
-exit($command->run());
-```
-
-### BuildCommand pipeline (10 steps)
-
-1. Create `StaticSiteBuilder` from Kernel's Application + Router.
-2. Configure multi-locale if `count(supportedLocales) > 1`.
-3. Discover doc content paths from `{contentPath}/*/*.md`.
-4. Add caller-provided paths (`addPaths()`).
-5. Exclude `/search.json` always. Exclude `/` only if no `GET /` route exists.
-6. Build all pages (render each route through the full app stack). **3xx responses are serialized as meta-refresh HTML** — redirects work in static output.
-7. Move `/404/index.html` to `/404.html`.
-8. Generate search index JSON.
-9. Generate root redirect (single-locale only, when no custom `GET /` route).
-10. Generate `sitemap.xml` and `robots.txt` (only if `production_url` is set).
-11. Run `onPostBuild` callbacks.
-
-### Empirical post-build hook timing quirk
-
-If your post-build hook writes to `public/` (e.g., a generated OG image),
-**the file lands in `dist/` only on the NEXT build.** The public→dist
-copy already happened during the pipeline; the hook fires after that
-copy. Production workaround in `zephyrus-leaf-site/scripts/generate-og-image.sh`:
-write directly to `dist/assets/...` if you need it visible in the
-current build, or accept the off-by-one if it's a low-churn asset and
-let the next build pick it up.
-
-### BuildCommand API
-
-- `addPaths(array $paths): void` — Add paths for parameterized routes
-- `excludePatterns(array $patterns): void` — Exclude paths by regex
-- `onPostBuild(callable $callback): void` — Hook after pipeline, receives `(StaticBuildResult $result, string $outputDir)`
-- `run(): int` — Execute, returns 0 on success, 1 on error
-
-### `StaticSiteBuilder` (lower-level)
-
-```php
-$builder = new StaticSiteBuilder($application, $router);
-$builder->setOutputDirectory($outputDir);
-$builder->setPublicDirectory(ROOT_DIR . '/public');
-$builder->setBaseUrl('http://localhost');
-$builder->setLocales(['en', 'fr'], 'en');
-$builder->addPaths(['/blog/post-1']);
-$builder->excludePatterns(['#^/api/#']);
-$result = $builder->build();
-```
-
-## Multi-locale builds
-
-**Scope:** Leaf's multi-locale is **string-level** (JSON translation
-files consumed via `localize()` in templates). Per-locale Markdown
-content can be added via `content/{locale}/...` directories — the
-non-default locale sees the union of `content/{locale}/...` + fallback
-to `content/...`.
-
-### URL semantics
-
-- **Default locale builds to root**: `dist/index.html`, `dist/blog/`, …
-- **Other locales build to subdirectories**: `dist/fr/`, `dist/ar/`, …
-- The default locale has **no URL prefix**. This affects internal-link
-  patterns and the language-switcher JS.
-
-### Configuration
+## Multi-locale
 
 ```yaml
 localization:
   locale: "en"
-  supported_locales:
-    - "en"
-    - "fr"
-    - "ar"
+  supported_locales: ["en", "fr"]
   locale_path: "locale"
 ```
 
-### Template variables
+- The default locale builds to the root (`dist/guide/intro/`), every other
+  one under `/{locale}/` (`dist/fr/guide/intro/`). The default locale never
+  has a prefix.
+- **Content falls back per page.** For `fr`, `content/fr/{section}/{slug}.md`
+  wins over `content/{section}/{slug}.md`; untranslated pages build from
+  the default file. A section that exists only under `content/fr/` builds
+  and shows in the French sidebar only. On a multi-locale site, folders
+  named after a supported locale are never treated as sections.
+- Templates get `$currentLocale`, `$defaultLocale` and `$supportedLocales`
+  (only when `locale_path` is set) and the `localize()` function, alias
+  `i18n()`.
+- Strings: every `locale/{locale}/*.json` is merged into one tree (files
+  read alphabetically, later wins). `{localize('nav.home')}` reads
+  `{"nav": {"home": "Home"}}`. Placeholders use braces:
+  `"greet": "Hi {name}"` with `{localize('greet', ['name' => 'Ana'])}`.
+  A key missing in `fr` falls back to the default locale's value, then to
+  the key itself.
+- The bundled nav already renders a language switcher when there is more
+  than one locale, and `lang-switcher.js` rewrites its links to keep the
+  current page. Write your own only in an overridden nav.
 
-The `TranslationLatteExtension` injects into every template:
-
-- `{$currentLocale}` — Active locale code
-- `{$defaultLocale}` — Default locale from config
-- `{$supportedLocales}` — Array of all supported locales
-
-### Locale-aware internal links
+Locale-aware links in your own templates:
 
 ```latte
 {var $dl = $defaultLocale ?? 'en'}
 {var $localePrefix = ($currentLocale ?? $dl) === $dl ? '' : '/' . $currentLocale}
 
 <a href="{$localePrefix}/">Home</a>
-<a href="{$localePrefix}/blog">Blog</a>
+<a href="{$localePrefix}/guide/intro">Guide</a>
 ```
 
-### Language switcher
+Traps on multi-locale sites (leaf-core `main`, CLI v0.1.6):
 
-```latte
-{foreach $supportedLocales as $loc}
-    {if $loc === $currentLocale}
-        <span class="current">{$loc|upper}</span>
-    {else}
-        <a href="{$loc === $dl ? '/' : '/' . $loc . '/'}" class="lang-switch" data-locale="{$loc}" data-default="{$dl}">{$loc|upper}</a>
-    {/if}
-{/foreach}
-```
-
-JS to preserve current path when switching:
-
-```javascript
-var langSwitches = document.querySelectorAll('.lang-switch[data-locale]');
-if (langSwitches.length) {
-    var path = window.location.pathname;
-    var defaultLang = langSwitches[0].getAttribute('data-default') || 'en';
-    var stripped = path.replace(/^\/(en|fr|ar)(\/|$)/, '/');
-    langSwitches.forEach(function (link) {
-        var loc = link.getAttribute('data-locale');
-        link.href = loc === defaultLang
-            ? (stripped === '/' ? '/' : stripped)
-            : '/' + loc + (stripped === '/' ? '/' : stripped);
-    });
-}
-```
-
-### Translation files
-
-JSON in `locale/{lang}/*.json` (every file in the directory is merged
-into one namespace):
-
-```json
-{
-    "nav":  { "home": "Home", "about": "About" },
-    "hero": { "title": "Welcome" }
-}
-```
-
-Usage: `{localize('nav.home')}`, `{localize('hero.title')}`. `i18n()`
-is an alias for `localize()`. Missing keys fall back to the key itself.
-
-### Per-locale search index (empirical)
-
-The build generates one `search.json` per locale:
-
-- Default: `/search.json` (default-locale pages)
-- Non-default: `/{locale}/search.json` (locale-specific + fallback pages)
-
-The frontend loads the locale-specific one based on the current URL
-prefix. Don't try to merge them into a single index — the per-locale
-fallback semantics belong on the build side.
+- **Custom pages and every `addPaths()` path are not built** (see Custom
+  pages).
+- **Search is not localized in the browser.** The build writes
+  `/{locale}/search.json`, but the bundled `search.js` always fetches
+  `{base_url}/search.json`, and the URLs inside `/fr/search.json` carry no
+  `/fr` prefix. To localize search, override `search.js` (it is in
+  `public/assets/js/`) to fetch the locale's index and prefix the URLs.
+- `composer dev` ignores `content/{locale}/` (the static build applies it):
+  check translated Markdown in the build, not in the Composer dev server.
 
 ## SEO
 
-### Sitemap & robots — automatic, conditional on `production_url`
+**`sitemap.xml` and `robots.txt` exist only when `production_url` is set.**
 
-Setting `production_url` in config.yml is the trigger. Without it,
-neither `sitemap.xml` nor `robots.txt` is generated. The sitemap
-includes `xhtml:link` hreflang alternates for multi-locale sites
-automatically.
-
-### Hreflang tags in templates
+- `robots.txt` is `User-agent: *`, `Allow: /` and
+  `Sitemap: <production_url>/sitemap.xml`, built from the raw value: a
+  trailing slash in `production_url` produces `//sitemap.xml`.
+- The sitemap lists every built page with a trailing slash, multi-locale
+  with `xhtml:link` hreflang alternates and `x-default`. It also lists
+  `/404/` (a dead URL once moved to `/404.html`) and `/{locale}/404/`, and
+  on multi-locale sites it repeats the first listed locale's page set for
+  every locale, so a page that exists only in `content/fr/` is missing.
+  Fix the file in a `post_build` hook (it exists by then).
+- **The bundled head has no `<link rel="canonical">`, no hreflang, no
+  `og:image`.** Add them in an overridden `templates/partials/head.latte`.
+  **Nothing sets `$requestPath` on the Binary tier**: a canonical built
+  from `$requestPath ?? '/'` points every page at the home URL. Build the
+  path from what the bundled controllers do pass, `$section` and `$slug`
+  on Markdown pages, `$pagePath` on custom pages:
 
 ```latte
-{var $canonicalBase = $leafProductionUrl ?: 'https://example.com'}
 {var $dl = $defaultLocale ?? 'en'}
-{var $pagePath = $requestPath ?? '/'}
-{var $pageSuffix = $pagePath === '/' ? '/' : rtrim($pagePath, '/') . '/'}
-{var $curLocale = $currentLocale ?? $dl}
-
-<link rel="canonical" href="{$canonicalBase}{$curLocale === $dl ? '' : '/' . $curLocale}{$pageSuffix}">
-{foreach $supportedLocales as $loc}
-<link rel="alternate" hreflang="{$loc}" href="{$canonicalBase}{$loc === $dl ? '' : '/' . $loc}{$pageSuffix}">
+{var $prefix = ($currentLocale ?? $dl) === $dl ? '' : '/' . $currentLocale}
+{var $path = rtrim($requestPath ?? (isset($section, $slug) ? '/' . $section . '/' . $slug : ($pagePath ?? '')), '/')}
+<link n:if="$leafProductionUrl !== ''" rel="canonical" href="{$leafProductionUrl}{$prefix}{$path}/">
+{if $leafProductionUrl !== ''}
+{foreach $supportedLocales ?? [] as $loc}
+<link rel="alternate" hreflang="{$loc}" href="{$leafProductionUrl}{$loc === $dl ? '' : '/' . $loc}{$path}/">
 {/foreach}
-<link rel="alternate" hreflang="x-default" href="{$canonicalBase}{$pageSuffix}">
-```
-
-Composer-tier controllers must pass `requestPath` for this to work:
-
-```php
-return $this->render('page', ['requestPath' => '/blog/' . $slug]);
-```
-
-**Never hardcode canonical URLs.** Use `$leafProductionUrl` (from
-`production_url` config) combined with `$currentLocale` and
-`$requestPath`.
-
-## Content system
-
-### Markdown with front matter
-
-Content files in `content/{section}/{slug}.md`:
-
-```markdown
----
-title: "Introduction"
-order: 1
-description: "Optional, used for meta description"
----
-
-Your content here…
-```
-
-### ContentLoader API
-
-- `getPage(section, slug): ?ParsedMarkdown` — Get a parsed page
-- `getSidebar(): array` — Navigation structure grouped by section
-- `getAllPages(): array` — Flat list of all pages
-- `getPreviousPage(section, slug): ?array` — `{title, url}` or null
-- `getNextPage(section, slug): ?array` — `{title, url}` or null
-- `getFirstPageUrl(): string` — URL of first page
-
-### `ParsedMarkdown`
-
-- `$parsed->html` — Rendered HTML
-- `$parsed->frontMatter` — YAML data as array
-- `$parsed->toc` — `[{id, text, level}, ...]` table of contents
-- `$parsed->meta('key', default)` — Get front matter value
-
-### Sidebar generation is automatic, not declared
-
-The sidebar is rendered from the search index that the BuildCommand
-pipeline produces — there is **no separate sidebar config file or
-template** to populate. Section order comes from `leaf.sections` in
-config.yml; alphabetical otherwise. For multi-locale, the sidebar
-differs per-locale based on which content files exist for that locale.
-
-### Custom pages
-
-Files in `templates/pages/{slug}.latte` (or `.php`, `.html`) become
-top-level routes at `/{slug}/`. Filename rules:
-
-- Lowercase, dashes OK, no leading numbers (`[a-z0-9][a-z0-9-]*`)
-- Subdirectories inside `pages/` are **not** routed (no nesting)
-- Drop a file, restart `leaf dev` (or rebuild), it appears
-
-## Configuration (`config.yml`)
-
-Identical shape on both tiers:
-
-```yaml
-application:
-  environment: !env APP_ENV, dev
-  debug: !env APP_DEBUG, true
-
-render:
-  engine: latte
-  directory: app/Views
-  cache: cache/latte
-  mode: always
-
-localization:
-  locale: "en"
-  supported_locales:
-    - "en"
-    - "fr"
-  locale_path: "locale"
-  timezone: "America/Montreal"
-
-leaf:
-  name: "My Project"
-  version: "1.0.0"
-  description: "A static site"
-  github_url: ""
-  content_path: "content"
-  output_path: "dist"
-  base_url: ""
-  production_url: "https://example.com"
-  author: "Name"
-  author_url: ""
-  license: "MIT"
-  sections:
-    getting-started: "Getting Started"
-    guides: "Guides"
-```
-
-### `LeafLatteExtension` globals (every template)
-
-`$leafName`, `$leafVersion`, `$leafDescription`, `$leafGithubUrl`,
-`$leafAuthor`, `$leafAuthorUrl`, `$leafLicense`, `$leafBaseUrl`
-(from `base_url` — for asset/link prefixing), `$leafProductionUrl`
-(from `production_url` — for canonical/hreflang).
-
-## Development server
-
-### Binary tier: `leaf dev`
-
-Go HTTP server serving `dist/`, rebuilds on file change, pushes
-SSE events to open tabs. Default `:8080`; override with `--addr :3000`.
-Debounced ~250ms.
-
-### Composer tier: `composer dev`
-
-Runs `php -S localhost:8080 -t public bin/router.php`. `DevRouter`
-handles:
-- Static file serving from `public/`
-- Locale prefix stripping (`/fr/blog` → sets `LEAF_LOCALE=fr`, routes to `/blog`)
-- Live-reload endpoint (`/__dev/reload` returns file change hash)
-- Defines `DEV_SERVER` constant for templates
-
-### `DEV_SERVER` constant
-
-The dev server defines the global `DEV_SERVER` constant. Use it in
-templates to gate live-reload polling so it never ships in production:
-
-```latte
-{if defined('DEV_SERVER')}
-<script>
-let lastHash = null;
-async function check() {
-    const r = await fetch('/__dev/reload');
-    const d = await r.json();
-    if (lastHash && d.hash !== lastHash) location.reload();
-    lastHash = d.hash;
-}
-check();
-setInterval(check, 1500);
-</script>
+<link rel="alternate" hreflang="x-default" href="{$leafProductionUrl}{$path}/">
+<meta property="og:image" content="{$leafProductionUrl}/assets/og/og-default.png">
 {/if}
 ```
 
-## Production patterns from `zephyrus-leaf-site`
+  It yields `https://example.com/fr/guide/intro/` on the French guide page
+  and `https://example.com/` on the landing. Put the 1200x630 image at
+  `public/assets/og/og-default.png`. The 404 page canonicalises to the
+  home URL and a locale-only page lists alternates that do not exist: guard
+  those if it matters. A Composer-tier controller can pass `requestPath`,
+  which the snippet prefers.
 
-The site at **leaf.ophelios.com** is the canonical real-world Leaf
-project. Patterns codified there (drawn from `www/zephyrus-leaf-site/`):
+## Dev servers
 
-### `dist/` is committed to git
+**`leaf dev`** builds once, then serves `dist/` from a Go server
+(`--addr`, default `:8080`) and injects a live-reload script (Server-Sent
+Events on `/__leaf/reload`) into every HTML response; the files on disk
+stay clean. It rebuilds, debounced 250 ms, on changes under `content/`,
+`templates/`, `public/`, `app/` and `config.yml`.
 
-The production site commits its `dist/` folder. Deployment is
-DigitalOcean's App Platform pulling from `main` — no CI build step. The
-dev rebuilds locally before each commit. Pros: zero-CI deploys, atomic
-rollback via `git revert`. Cons: PRs must include the rebuilt `dist/`.
+- **Not `locale/`**: after editing translations, touch `config.yml` or
+  restart.
+- Only directories that exist when it starts are watched: create
+  `templates/` before starting, or restart.
+- It writes the real `dist/` and runs `post_build` hooks on every rebuild.
+- `DEV_SERVER` is not defined here (that constant belongs to `composer dev`).
 
-### Asset pipeline: passthrough copy, no bundler
+**`composer dev`** (Composer tier) is PHP's built-in server with
+`Leaf\DevRouter`, rendering pages live; see the reference file.
 
-`public/` is copied verbatim to `dist/`. Tailwind loaded via CDN with an
-inline config for custom color tokens; CSS variables for the actual
-theme tokens (`--bg-deep`, `--bg-surface`, `--text`, `--accent`).
-Toggling theme = setting `data-theme` on `<html>`. No Vite, Webpack, or
-preprocessor; no hash-based cache busting on CSS/JS — production
-deploys behind Cloudflare/CDN handle that layer.
+## Deploying
 
-### OG image generated by post-build hook
+`dist/` is plain static files for any static host. `404.html` sits at the
+root, where most hosts look for it. Two proven patterns:
 
-`scripts/generate-og-image.sh` uses headless Chrome + Python PIL to
-render `resources/og-templates/site.html` (1200×630), writes to
-`public/assets/images/og-image.png`. Because of the timing quirk above,
-this lands in `dist/` on the *next* build — that's tolerable for
-infrequent OG-template updates.
+- **Commit `dist/`** and let the host deploy the branch (leaf.ophelios.com
+  runs this way on DigitalOcean App Platform). Rebuild before every commit.
+- **Build in CI with a pinned release** (the public
+  [zephyrus-site](https://github.com/ophelios-studio/zephyrus-site) builds
+  this way for GitHub Pages):
 
-### No em-dashes (project style rule)
+```bash
+LEAF_VERSION=v0.1.6
+curl -fsSL "https://github.com/ophelios-studio/zephyrus-leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
+echo "c4750b1c5754bd57c4dfcf4edb5f42f1c10c91311bd429c7c7813e4121d0e1bf  $RUNNER_TEMP/leaf" | sha256sum --check --strict
+chmod +x "$RUNNER_TEMP/leaf"
+APP_DEBUG=false "$RUNNER_TEMP/leaf" build
+```
 
-The site explicitly bans U+2014 em-dashes in any content or template.
-Likely past trouble with encoding/rendering across font fallbacks.
-Stick to en-dashes (`–`) or commas. CLAUDE.md in the project enforces it.
+  The checksum is the v0.1.6 `leaf-linux-amd64` line of the release's
+  `checksums.txt`; take the new one when you bump the version.
 
 ## Key rules
 
-- **Identify the tier before suggesting commands.** Binary tier (no
-  `app/`, no `composer.json`) → `leaf init|dev|build|eject`. Composer
-  tier → `composer dev|build` plus code in `bin/build.php`,
-  `app/Controllers/`, `app/Views/`.
-- **`templates/` is the override surface for both tiers.** Recommend
-  `templates/path/to/file.latte` before suggesting edits to
-  `app/Views/`. Path must match the bundled path EXACTLY.
-- **The default locale builds to root, other locales to `/{locale}/`.**
-- **Always pass `requestPath`** from Composer-tier controllers for
-  correct canonical/hreflang.
-- **Use `$localePrefix` for internal links** (empty for default locale,
-  `/{locale}` for others).
-- **Set `production_url`** in config.yml to enable sitemap/robots
-  generation.
-- **Use `BuildCommand.onPostBuild()` for project-specific build steps**
-  (Composer tier). Binary-tier users who need this must `leaf eject`
-  first.
-- **Content sections order comes from `leaf.sections` config**, or
-  alphabetical if not set.
-- **`dist/` is the deployment artifact**, can be served by any static
-  host. Committing it to git for App-Platform-style auto-deploy is a
-  legitimate pattern.
-- **Leaf's multi-locale is string-level by default;** per-locale
-  Markdown content lives in `content/{locale}/...` and falls back to
-  `content/...`.
-- **Redirects in routes are serialized as meta-refresh HTML** in static
-  builds (since v0.1.2+); `Response::redirect` works.
-- **Post-build hook output to `public/` lands in `dist/` on the NEXT
-  build.** Write directly to `dist/` if you need it in the current
-  build.
-- **No em-dashes** if you're working in `zephyrus-leaf-site`.
+- **Identify the tier first.** Binary: `leaf init|dev|build|eject`, edit
+  `content/`, `templates/`, `public/`, `locale/`, `config.yml`. Composer:
+  `composer dev|build`, edit `app/` and `bin/build.php`.
+- **Flags before the positional argument** (`leaf init --force .`).
+- **Overrides: exact path, `.latte` only, includes relative to the
+  including file**; prove each one by a visible change.
+- **Never build canonical URLs from `$requestPath` alone**: use the
+  `$section`/`$slug`/`$pagePath` snippet above.
+- **`production_url` without trailing slash** turns on sitemap and robots;
+  clean `/404/` out of the sitemap in a hook.
+- **List every section in `leaf.sections`** (or none), hyphenated slugs only.
+- **Multi-locale sites lose custom pages and `addPaths()` routes**, and
+  their browser search stays on the default locale.
+- **Build production with `APP_DEBUG=false`** so warnings never ship.
+- **Post-build steps go in `leaf.post_build`** on either tier; write to
+  `dist/` when the output must ship in the same build.
+- **`dist/` is the artifact.** `leaf build` replaces it; `composer build`
+  never cleans it.
 
 ## References
 
-- Live docs: **https://leaf.ophelios.com**
-- Framework repo: **https://github.com/ophelios-studio/zephyrus-leaf-core**
-- Production reference site (and source for empirical patterns):
-  `zephyrus-leaf-site` (private; ask Ophelios for access)
-- In-repo: `examples/leaf/` — minimal Binary-tier scaffold to verify
-  the basic flow.
+- Docs: https://leaf.ophelios.com
+- CLI: https://github.com/ophelios-studio/zephyrus-leaf-cli (releases carry
+  the binaries and `checksums.txt`)
+- Core library: https://github.com/ophelios-studio/zephyrus-leaf-core
+- Composer template: https://github.com/ophelios-studio/zephyrus-leaf
+- A real multi-locale Binary-tier site with SEO overrides and a sitemap
+  hook: https://github.com/ophelios-studio/zephyrus-site
+- In this repository: `examples/leaf/`, a minimal Binary-tier site with
+  the layout and head overrides above (no em-dash, canonical, hreflang).
