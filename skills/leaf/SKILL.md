@@ -116,6 +116,8 @@ leaf:
     - "./scripts/after-build.sh"
 ```
 
+The `leaf init` scaffold has no `production_url`: add it, or the build writes no `sitemap.xml` and no `robots.txt`.
+
 Defaults when a key is missing: `name` "My Project", `version` "0.1.0",
 `content_path` "content", `output_path` "dist", `license` "MIT", the
 rest empty.

@@ -156,7 +156,7 @@ $command->addPaths(['/blog/my-post']);
 
 // Runs after the leaf.post_build hooks.
 $command->onPostBuild(function (StaticBuildResult $result, string $outputDir): void {
-    echo count($result->builtPages) . " pages in {$outputDir}" . PHP_EOL;
+    echo "{$result->pagesBuilt} pages in {$outputDir}" . PHP_EOL;
 });
 
 exit($command->run());
