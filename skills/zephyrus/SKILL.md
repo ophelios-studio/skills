@@ -762,7 +762,20 @@ PostgreSQL only. `Database` has `select`, `selectOne`, `selectValue`,
 and `pdo()`. Parameters are bound by type (`null`, booleans, `DateTimeInterface`,
 `BackedEnum`, `Binary` for bytea); arrays are refused. Rows come back as
 `stdClass` with integers, floats, booleans, PostgreSQL arrays as PHP arrays and
-JSON/JSONB decoded.
+JSON/JSONB decoded. Set `column_cache_version` to something that changes with every
+migration, or a column that changes type under the same name and width keeps its old
+decoding: for up to an hour under PHP-FPM with APCu, and in a long-running process (CLI,
+RoadRunner) until it restarts or calls `Database::flushSharedColumnMetadata()`. Under
+PHP-FPM without APCu it lasts only the current request.
+Only a statement starting with `SELECT`, `WITH`, `VALUES`, `TABLE`, `INSERT`, `UPDATE`,
+`DELETE`, `MERGE` or a parenthesis is served from the column type cache *(dev)*; any
+other (`FETCH`, `EXECUTE`, `SHOW`, `CALL`) has its columns described on every call, one to two
+round trips per column depending on the types, so fetch cursors in large batches. On `v0.14.1`
+a second cursor of the same width inherited the first one's converters. Queries of a `Database`
+built by `fromConfig()` go out as unnamed statements, bound by the server *(dev)* (on
+`v0.14.1` each was a named statement, prepared and then closed (a `DEALLOCATE`, or a
+protocol close under libpq 17)); a `new Database($pdo)` keeps named statements. See
+`references/database.md`.
 
 One SQL statement per `execute()`: `"INSERT ...; INSERT ..."` inserts nothing
 and throws a `DatabaseException` whose `getMessage()` is `Query failed [SQLSTATE

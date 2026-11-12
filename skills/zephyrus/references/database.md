@@ -49,6 +49,43 @@ $result->hasNext;    // false
   `per_page`, `total_pages`, `has_previous`, `has_next`. A `Broker` has the
   same methods as protected helpers.
 
+## Column type cache and statements
+
+Rows are decoded from the column types PostgreSQL reports, cached per SQL text and result
+width, in the process and in APCu when it is available. Set `column_cache_version` in the
+`database` section to a value that changes with every migration (for example the id of the
+latest one): without it, a column that changes type while keeping its name and the width of
+the result keeps its old converter, so a `jsonb` column comes back as a string. That lasts up
+to an hour under PHP-FPM with APCu, and only the current request under PHP-FPM without it; in
+a long-running process (CLI, RoadRunner) until it restarts or `Database::flushSharedColumnMetadata()`
+runs in that process.
+
+```yaml
+database:
+  column_cache_version: !env DB_SCHEMA_VERSION
+```
+
+`!env DB_SCHEMA_VERSION` unquoted loads through `Configuration::fromYamlFile()` and reaches
+`DatabaseConfig::$columnCacheVersion` as a string. When `DB_SCHEMA_VERSION` is not set it loads `''`
+without any error (no version, so the stale window returns). Change the value after the migration has
+run and before the release serves traffic. It helps when the PHP master survives a release
+and re-reads `config.yml` (symlink deploys); a process restart already clears the cache.
+
+Only a statement whose first element, after blanks and comments, is a parenthesis or one of
+`SELECT`, `WITH`, `VALUES`, `TABLE`, `INSERT`, `UPDATE`, `DELETE`, `MERGE` uses the cache
+*(dev)*. Any other (`FETCH`, `EXECUTE`, `SHOW`, `CALL`, a leading `;`, a nested comment (an
+old query left commented out, for instance)) has its columns described on every call,
+because the same text can return another shape. The cost is one to two round trips per
+column depending on the types, so fetch in large batches. On `v0.14.1` a `FETCH 1000 FROM c`
+on a second cursor of the same width reused the first cursor's converters and its `jsonb`
+columns came back as strings.
+
+Queries of a `Database` built by `Database::fromConfig()` go out as unnamed statements with
+the parameters bound by the server, still not emulated *(dev)*; a `new Database($pdo)` keeps
+named statements. On `v0.14.1` each query was a named statement, prepared and then
+closed (a `DEALLOCATE`, or a protocol close under libpq 17): three round trips per query
+against one on `dev`. That is two more per query, one to prepare and one to close.
+
 ## Hydration rules
 
 Date strings and the refusals below (a date, a nested entity, an unsupported type or
