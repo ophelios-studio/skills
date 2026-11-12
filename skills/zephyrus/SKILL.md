@@ -178,8 +178,8 @@ closest accepted key (gotcha 1). Besides the keys below, they accept session
 
 ```yaml
 application:
-  environment: !env APP_ENV, dev   # prod/production, stage/staging, test/testing, dev/development/local
-  debug: !env APP_DEBUG, false     # forced off in production and staging
+  environment: !env APP_ENV, production  # prod/production, stage/staging, test/testing, dev/development/local
+  debug: !env APP_DEBUG, false           # forced off in production and staging
 
 session:
   name: APP_SESSION
@@ -220,6 +220,14 @@ database:
 
 - `!env NAME, default` reads `$_ENV` and the process environment, never
   `$_SERVER`. Unset without a default, it reads as `null`.
+- Default `environment` to `production`: with `dev` as the default, a server
+  where `APP_ENV` is unset runs in development and the production debug
+  force-off never fires. A developer sets `APP_ENV=dev` locally
+  (`APP_ENV=dev php -S 127.0.0.1:8000 -t public`).
+- The framework never turns PHP's `display_errors` off, and PHP's built-in
+  default is on when no `php.ini` is loaded. Production needs `display_errors =
+  Off`, `display_startup_errors = Off` and `log_errors = On` in the `php.ini`
+  that php-fpm or Apache loads.
 - Booleans accept only `true`/`false`, `1`/`0`, `on`/`off`, `yes`/`no`.
 - Read values through typed properties: `$config->security->maxBodySize`,
   `$config->session->name`, `$config->database` (null when the section is
@@ -254,8 +262,8 @@ $config = Configuration::fromYamlFile($root . '/config.yml', ['billing' => Billi
 $billing = $config->section('billing'); // a BillingConfig
 ```
 
-A custom section does not refuse unknown keys: a misspelled key there silently
-takes the default.
+A custom section does not refuse unknown keys, nor does `render:`: a
+misspelled key there silently takes the default.
 
 ## Security wiring *(dev)*
 
@@ -271,6 +279,11 @@ value (gotcha 3):
 | `headers` | `new SecureHeadersMiddleware($config->security->headers)` |
 | `csrf` (enabled) | `new CsrfMiddleware($tokens, CsrfConfig::fromSecurityConfig($config->security))` |
 
+- Order: mount `SecureHeadersMiddleware` first, then `AllowedHostsMiddleware`,
+  then `ForceHttpsMiddleware`. The other way round, plain HTTP with any `Host`
+  gets a cacheable 308 to that host before the host is checked.
+  `ForceHttpsMiddleware` redirects every plain request, so leave it and
+  `force_https` out together in local development.
 - Only declared keys are checked. `max_body_size` still defaults to `2097152`
   when you leave it out, but nothing enforces it unless `MaxBodySizeMiddleware`
   is mounted: with no middleware, requests of any size reach your routes.
@@ -281,6 +294,14 @@ value (gotcha 3):
   `allowedHosts`, `csrf`, `maxBodySize`, `headers`, bare or `security.`-prefixed).
 - Not checked: `trusted_proxies`, `session`, `encryption`. Mount
   `SessionMiddleware` yourself, and pass the proxies to `Request::fromGlobals()`.
+- Behind a proxy, `x-forwarded-host`, `-proto` and `-port` are read from their
+  FIRST value, which the client can supply: trust them only when the nearest
+  proxy overwrites them (nginx: `proxy_set_header X-Forwarded-Host $host;`,
+  `X-Forwarded-Proto $scheme`, `X-Forwarded-Port $server_port`), else list only
+  the headers it does overwrite in `trusted_headers`. `X-Forwarded-For` is read
+  from the right: the proxy must append to it (`$proxy_add_x_forwarded_for`) or
+  overwrite it. List `allowed_hosts` in production as the backstop; it does not
+  check ports.
 - `withoutSecurityWiringCheck()` turns the whole check off; prefer naming the
   one key with `withAcknowledgedSecurityKeys()`.
 
@@ -337,9 +358,11 @@ final class ProjectController extends Controller
 - Attributes live in `Zephyrus\Routing\Attribute\` (singular): `Get`, `Post`,
   `Put`, `Patch`, `Delete`, `Head`, `Options`, `Route`, `Root`, `Middleware`,
   `MiddlewareGroup`, `RequiresEnv`, `WithoutMiddleware`.
-- Action parameters resolve in order: a `Request` type, a route placeholder of
-  the same name, a request attribute of the same name (here `$userId`, set by
-  the `auth` middleware), then the declared default. The query string never
+- Action parameters resolve in order: a `Request` type; a route placeholder of
+  the same name (never replaced by a request attribute); a request attribute of
+  the same name, cast to the declared type (here `$userId`, set by the `auth`
+  middleware); the next unclaimed route parameter, by position; the declared
+  default; otherwise `HandlerResolverException`. The query string never
   binds (`?n=3` leaves `int $n = 5` at 5): read it with `$request->query()`. A
   value that does not cast to the declared type answers 404. A constraint is a
   regex fragment.
@@ -424,6 +447,11 @@ redirect to user-supplied targets with `localRedirect()`. Uploads:
 `$request->file('avatar')` returns a `FileUpload` or `null`; store it with
 `Uploader` (see `references/uploads.md`).
 
+`Response` has no cookie API and holds one value per header name. A
+`Set-Cookie` header on a `Response` replaces every cookie PHP already queued
+(the emitter calls `header()`), the session cookie included: keep the value in
+the session, or set it on a response that sets no other cookie.
+
 ## Middleware
 
 ```php
@@ -473,6 +501,8 @@ It writes to `public.session` by default (the class docblock gives the
 `user_id|i:7;`. Behind PgBouncer transaction pooling, pass `lockSessions: false`.
 
 There is no automatic token injection: render the field in every form.
+`csrfToken()` is not a core function: the bootstrap above registers it with
+`addFunction('csrfToken', $tokens->getToken(...))`.
 
 ```latte
 <input type="hidden" name="_csrf_token" value="{csrfToken()}">
@@ -601,6 +631,10 @@ trace whenever `display_errors` is on. "Fully configured" means after
 `withConfiguration()` (it returns `false` before) and after
 `withProductionDebugAcknowledged()` if you use it (in a production-like
 environment it is `true` only then).
+
+`debug: true` alone shows nothing for a controller exception: without a handler
+that rethrows, the answer is a bare `500 Internal Server Error`, and nothing is
+logged unless an `ExceptionEvent` listener logs it.
 
 A handler that throws anything else yields the fixed 500. With
 `application.debug: true`, Tracy only shows itself to loopback clients. Behind
@@ -773,12 +807,12 @@ use Zephyrus\Http\Request;
 
 final class AppTest extends TestCase
 {
-    private static Application $app;
+    private Application $app;
 
-    public static function setUpBeforeClass(): void
+    protected function setUp(): void
     {
         $root = dirname(__DIR__);
-        self::$app = Kernel::application($root, Configuration::fromYamlFile($root . '/config.yml'));
+        $this->app = Kernel::application($root, Configuration::fromYamlFile($root . '/config.yml'));
     }
 
     protected function tearDown(): void
@@ -789,7 +823,7 @@ final class AppTest extends TestCase
 
     public function testAJsonRouteAnswersWithItsPayload(): void
     {
-        $response = self::$app->handle(Request::fromArray('GET', '/api/hello/ada'));
+        $response = $this->app->handle(Request::fromArray('GET', '/api/hello/ada'));
 
         self::assertSame(200, $response->status);
         self::assertSame(['message' => 'Hello, ada'], json_decode($response->body, true));
@@ -797,28 +831,28 @@ final class AppTest extends TestCase
 
     public function testAPostWithoutACsrfTokenIsRefused(): void
     {
-        $response = self::$app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada']));
+        $response = $this->app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada']));
 
         self::assertSame(403, $response->status);
     }
 
     public function testAPostCarryingTheTokenFromAPreviousGetIsAccepted(): void
     {
-        $page = self::$app->handle(Request::fromArray('GET', '/'));
+        $page = $this->app->handle(Request::fromArray('GET', '/'));
         preg_match('/name="_csrf_token" value="([0-9a-f]+)"/', $page->body, $found);
 
-        $response = self::$app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada', '_csrf_token' => $found[1]]));
+        $response = $this->app->handle(Request::fromArray('POST', '/greet', body: ['name' => 'Ada', '_csrf_token' => $found[1]]));
 
         self::assertSame(200, $response->status);
     }
 
     public function testTheSessionCarriesAcrossTwoRequests(): void
     {
-        $page = self::$app->handle(Request::fromArray('GET', '/'));
+        $page = $this->app->handle(Request::fromArray('GET', '/'));
         preg_match('/name="_csrf_token" value="([0-9a-f]+)"/', $page->body, $found);
 
-        $signedIn = self::$app->handle(Request::fromArray('POST', '/sign-in', body: ['_csrf_token' => $found[1]]));
-        $me = self::$app->handle(Request::fromArray('GET', '/me'));
+        $signedIn = $this->app->handle(Request::fromArray('POST', '/sign-in', body: ['_csrf_token' => $found[1]]));
+        $me = $this->app->handle(Request::fromArray('GET', '/me'));
 
         self::assertSame(302, $signedIn->status);
         self::assertSame(['user' => 42], json_decode($me->body, true));
@@ -826,16 +860,18 @@ final class AppTest extends TestCase
 
     public function testAnAnonymousRequestSeesNoUser(): void
     {
-        $me = self::$app->handle(Request::fromArray('GET', '/me'));
+        $me = $this->app->handle(Request::fromArray('GET', '/me'));
 
         self::assertSame(['user' => null], json_decode($me->body, true));
     }
 }
 ```
 
-The application is built once per class. `App::reset()` clears the statics
-`App` holds (configuration, session, formatter, asset, URL generator,
-translator, nonce), which the next request registers again. `$_SESSION = []` is
+Build the application in `setUp()`, once per test. `App::reset()` clears the
+statics `App` holds (configuration, session, formatter, asset, URL generator,
+translator, nonce), and only `build()` installs the URL generator again: an
+application built once per class makes `route()` throw `LogicException: route()
+needs the application routes` from the second test on. `$_SESSION = []` is
 a separate step: in-process there is no cookie to carry (`handle()` returns no
 `Set-Cookie`), the PHP session lives for the whole process, and `reset()` does
 not touch it, so without that line a test signed in earlier leaks into the next
@@ -869,7 +905,9 @@ not changed since. Repros marked *(upgrading from 0.13)* only concern an app
 written for `v0.13.0`; a new app can skip them.
 
 **1. A misspelled section or key stops the boot.** Fix the spelling; keep one
-spelling per key.
+spelling per key. Only a name close to a built-in one is caught: an unrelated
+top-level key (`foo:`) passes silently (gotcha 2), and the `render:` section
+ignores unknown keys.
 
 ```text
 in:  sesion:
