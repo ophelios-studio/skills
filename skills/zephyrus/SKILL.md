@@ -10,11 +10,12 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against `v0.14.0`, the release a bare `composer
-require` installs. An API marked *(0.14)* is new in that release: `v0.13.0`
+Everything below was run against `v0.14.1`, the release a bare `composer
+require` installs. An API marked *(0.14)* is new in `v0.14.0`: `v0.13.0`
 lacks it, predates many breaking changes, and does not run the bootstrap below.
-Behaviour marked *(dev)* is on the `dev` branch, unreleased since `v0.14.0`;
-the same passage says what `v0.14.0` does instead.
+Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
+`v0.14.0` does instead. A *dev* marker will flag behaviour on the `dev` branch
+unreleased since the last tag; the same passage says what the release does instead.
 The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
@@ -190,7 +191,7 @@ session:
 
 security:
   force_https: false
-  allowed_hosts: []                # host names, no scheme; host:port pins the port (dev)
+  allowed_hosts: []                # host names, no scheme; host:port pins the port (0.14.1)
   max_body_size: 2097152           # bytes, no unit suffix
   trusted_proxies: []              # addresses or CIDR network addresses
   csrf:
@@ -227,7 +228,7 @@ database:
   Unless debug is on for the boot and errors may reach its output (the command
   line, or a client Tracy shows itself to, see Errors), `build()` turns
   `display_errors` and `display_startup_errors` off before any check that can
-  refuse *(dev)*; on `v0.14.0` it leaves them as they are. An error raised before `build()` (a
+  refuse *(0.14.1)*; on `v0.14.0` it leaves them as they are. An error raised before `build()` (a
   refused `!env` or YAML value) still prints, so production needs
   `display_errors = Off`, `display_startup_errors = Off` and `log_errors = On`
   in the `php.ini` that php-fpm or Apache loads.
@@ -298,7 +299,7 @@ value (gotcha 3):
 - Not checked: `trusted_proxies`, `session`, `encryption`. Mount
   `SessionMiddleware` yourself, and pass the proxies to `Request::fromGlobals()`.
 - Behind a proxy, `x-forwarded-host`, `-proto` and `-port` are read from their
-  LAST entry *(dev)*, the one the nearest proxy wrote; an empty last entry
+  LAST entry *(0.14.1)*, the one the nearest proxy wrote; an empty last entry
   counts as no header. That proxy must write each header you trust on every
   request, by overwriting or appending (nginx: `proxy_set_header
   X-Forwarded-Host $host;`, `X-Forwarded-Proto $scheme`, `X-Forwarded-Port
@@ -313,12 +314,12 @@ value (gotcha 3):
   client supplies even through an appending proxy, so there the proxy must
   overwrite them. `X-Forwarded-For` is read from the right: the proxy must
   append to it (`$proxy_add_x_forwarded_for`) or overwrite it. Behind two
-  appending proxies, the value read is the nearest one's *(dev)*: if the outer
+  appending proxies, the value read is the nearest one's *(0.14.1)*: if the outer
   proxy rewrote `Host`, that is the internal name, so `allowed_hosts` refuses
   it; let the outer proxy overwrite instead.
 - List `allowed_hosts` in production as the backstop. An entry without a port
   admits every port. When the app builds absolute URLs from the request (reset
-  links, redirects), pin the port *(dev)*: `app.example.com:443`,
+  links, redirects), pin the port *(0.14.1)*: `app.example.com:443`,
   `[::1]:8080`, `*.example.com:443`. A pinned entry admits that port only, and
   a URL without a port counts as 80 for http, 443 for https. With
   `force_https`, also list the host on port 80, which then only reaches the
@@ -641,14 +642,14 @@ does not cast, 405, 422 for `ValidationException`, otherwise 500
 `Internal Server Error` (JSON when asked). The message never reaches the client.
 An exception that ends in that 500 is written to the error log with its trace,
 the exception of a failing handler together with the one it was answering
-*(dev)*; on `v0.14.0` it reaches only an `ExceptionEvent` listener (gotcha 13).
+*(0.14.1)*; on `v0.14.0` it reaches only an `ExceptionEvent` listener (gotcha 13).
 Report and customize:
 
 ```php
 $events = new EventDispatcher();
 $events->addListener(ExceptionEvent::class, function (ExceptionEvent $event) use ($tracker): void {
     if (!$event->isRoutingFailure()) { // skip 404 and 405
-        $tracker->report($event->getException()); // the error log already has every unhandled one (dev)
+        $tracker->report($event->getException()); // the error log already has every unhandled one (0.14.1)
     }
 });
 
@@ -661,7 +662,7 @@ $builder = $builder
 ```
 
 A handler may return `null` to keep the built-in answer. With debug on, an
-exception no handler answers reaches Tracy *(dev)*. A catch-all handler keeps it
+exception no handler answers reaches Tracy *(0.14.1)*. A catch-all handler keeps it
 from Tracy, so rethrow the same object in debug:
 
 ```php
@@ -680,7 +681,7 @@ Take `$debug` from `$builder->isDebugEnabledForBoot()` *(0.14)* on the fully con
 builder, never from `$config->application->debug`: in production and staging
 `build()` turns Tracy off but leaves that value `true`. A rethrow Tracy does not
 render, there or for a client it does not show itself to, is logged and answered
-with the generic 500 instead of your page *(dev)*; on `v0.14.0` it reaches PHP's
+with the generic 500 instead of your page *(0.14.1)*; on `v0.14.0` it reaches PHP's
 own handler, which prints the message, server paths and trace whenever
 `display_errors` is on. "Fully configured" means after
 `withConfiguration()` (it returns `false` before) and after
@@ -689,22 +690,22 @@ environment it is `true` only then).
 
 With `debug: true` and no handler, a controller exception shows the Bluescreen
 to a client Tracy renders for; any other client gets the generic 500 and the
-exception goes to the error log *(dev)*. On `v0.14.0`, `debug: true` alone shows
+exception goes to the error log *(0.14.1)*. On `v0.14.0`, `debug: true` alone shows
 nothing: the answer is a bare 500, logged only by an `ExceptionEvent` listener.
 In the command line with debug on (tests, scripts), an unhandled exception
-leaves `handle()` *(dev)*. `KernelBuilder::withUnhandledExceptionsRethrown()`
+leaves `handle()` *(0.14.1)*. `KernelBuilder::withUnhandledExceptionsRethrown()`
 forces that whatever the debug flag, through
 `new ApplicationBuilder(KernelBuilder::create()->withUnhandledExceptionsRethrown())`;
 outside a test, the exception then reaches PHP's own handler.
 
 A handler that throws anything else yields the fixed text 500, and both
-exceptions go to the error log *(dev)*; where an unhandled exception would leave
+exceptions go to the error log *(0.14.1)*; where an unhandled exception would leave
 `handle()`, the handler's exception does instead. On `v0.14.0` only an
 `ExceptionEvent` listener sees them.
 
 With `application.debug: true` and no allowlist, Tracy only shows itself to
 loopback clients whose request carries no `X-Forwarded-For`, `Forwarded` or
-*(dev)* `X-Real-IP` header. Behind Docker the browser arrives from the bridge gateway, so name it
+*(0.14.1)* `X-Real-IP` header. Behind Docker the browser arrives from the bridge gateway, so name it
 with a secret and send that secret in a `tracy-debug` cookie:
 
 ```php
@@ -713,12 +714,12 @@ $builder = $builder->withDebugClientAllowlist(env('DEBUG_CLIENTS'));
 ```
 
 A declared allowlist admits only its entries, so list loopback too if you want
-it *(dev)*. A bare loopback entry (`127.0.0.1`, `::1`) admits no request that
+it *(0.14.1)*. A bare loopback entry (`127.0.0.1`, `::1`) admits no request that
 carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP`: behind a proxy on the same
-host, list `secret@127.0.0.1` and send the cookie *(dev)*. A proxy on the same
+host, list `secret@127.0.0.1` and send the cookie *(0.14.1)*. A proxy on the same
 host that adds none of those headers (a bare nginx `proxy_pass`, socat, a TLS
 tunnel) shows the Bluescreen to every client, with no allowlist or with a bare
-loopback entry *(dev)*, so list `secret@127.0.0.1` and send the cookie there too.
+loopback entry *(0.14.1)*, so list `secret@127.0.0.1` and send the cookie there too.
 On `v0.14.0` any allowlist also admitted loopback, so such a proxy showed it to
 every client.
 
@@ -958,7 +959,7 @@ CSRF token.
 JSON `rawBody:` (gotcha 21).
 
 With `application.debug: true`, an exception nothing answers leaves `handle()`
-in a test, so PHPUnit reports it whole *(dev)*; with debug off the test gets the
+in a test, so PHPUnit reports it whole *(0.14.1)*; with debug off the test gets the
 logged 500 (see Errors).
 
 ## Other modules
@@ -1054,9 +1055,9 @@ in:  max_body_size: 2M
 out: ConfigurationException: Configuration section 'security' field 'max_body_size' has invalid value "2M": must be a number of bytes, for example 2097152 (no unit suffix).
 in:  allowed_hosts: [localhost:8080]  (v0.14.0)
 out: ConfigurationException: Configuration section 'security' field 'allowedHosts[0]' has invalid value "localhost:8080": ports are not matched: list "localhost" only.
-in:  allowed_hosts: [localhost:8080]  (dev)
+in:  allowed_hosts: [localhost:8080]  (0.14.1)
 out: accepted: http://localhost:8080/ passes, http://localhost/ gets a 400
-in:  allowed_hosts: [localhost:65536]  (dev)
+in:  allowed_hosts: [localhost:65536]  (0.14.1)
 out: ConfigurationException: Configuration section 'security' field 'allowedHosts[0]' has invalid value "localhost:65536": the port must be a number from 1 to 65535 without a leading zero.
 in:  allowed_hosts: ~
 out: ConfigurationException: Configuration section 'security' field 'allowedHosts' has invalid value null: an empty list is written [].
@@ -1126,7 +1127,7 @@ out: InvalidArgumentException: Section factory "database" collides with the buil
 ```
 
 **13. The reason for a 500 never reaches the client.** Each of these answers a
-bare 500 `Internal Server Error`; the reason shows in the error log *(dev)* and
+bare 500 `Internal Server Error`; the reason shows in the error log *(0.14.1)* and
 in an `ExceptionEvent` listener. On `v0.14.0` only the listener sees it, so
 without an event dispatcher it reaches nobody. With debug on, Tracy shows it to
 a client it admits instead, and in the command line it leaves `handle()` (see
@@ -1216,9 +1217,9 @@ out: clientIp() = 10.0.0.5, scheme = http
 in:  the same with trustedProxies: ['10.0.0.0/8']
 out: clientIp() = 203.0.113.9, scheme = https
 in:  the same, plus X-Forwarded-Host "evil.example, app.example.com" (appended by the proxy)
-out: host = app.example.com (dev); evil.example on v0.14.0
+out: host = app.example.com (0.14.1); evil.example on v0.14.0
 in:  the same, plus X-Forwarded-Host "evil.example, " and Host app.example.com
-out: host = app.example.com, the Host header (dev); evil.example on v0.14.0
+out: host = app.example.com, the Host header (0.14.1); evil.example on v0.14.0
 ```
 
 **21. A malformed JSON body reads as empty.** Check `isMalformed()` *(0.14)* before
@@ -1322,9 +1323,9 @@ out: accepted: Tracy shows to loopback clients only
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
 out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 127.0.0.1 with no forwarded header
-out: no Tracy bar: loopback is not on the list (dev)   (v0.14.0: the bar)
+out: no Tracy bar: loopback is not on the list (0.14.1)   (v0.14.0: the bar)
 in:  DEBUG_CLIENTS=127.0.0.1, GET / from 127.0.0.1 with X-Forwarded-For or X-Real-IP (a proxy on the same host)
-out: no Tracy bar: a bare loopback entry admits no forwarded request; list secret@127.0.0.1 and send tracy-debug=secret (dev)   (v0.14.0: the bar)
+out: no Tracy bar: a bare loopback entry admits no forwarded request; list secret@127.0.0.1 and send tracy-debug=secret (0.14.1)   (v0.14.0: the bar)
 ```
 
 **31. A NULL column into a non-nullable property is a `TypeError`.** Declare
