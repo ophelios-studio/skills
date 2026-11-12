@@ -13,8 +13,9 @@ for PostgreSQL. No ORM, no migrations.
 Everything below was run against `v0.14.0`, the release a bare `composer
 require` installs. An API marked *(0.14)* is new in that release: `v0.13.0`
 lacks it, predates many breaking changes, and does not run the bootstrap below.
-A behaviour marked *(dev)* is on the framework's `dev` branch, not yet released;
-the same passage says what `v0.14.0` does instead. The framework's `CHANGELOG.md` lists each change with the fix to make. The
+Behaviour marked *(dev)* is on the `dev` branch, unreleased since `v0.14.0`;
+the same passage says what `v0.14.0` does instead.
+The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
 
@@ -222,10 +223,14 @@ database:
   where `APP_ENV` is unset runs in development and the production debug
   force-off never fires. A developer sets `APP_ENV=dev` locally
   (`APP_ENV=dev php -S 127.0.0.1:8000 -t public`).
-- Outside a boot refusal, the framework never turns PHP's `display_errors` off, and PHP's built-in
-  default is on when no `php.ini` is loaded. Production needs `display_errors =
-  Off`, `display_startup_errors = Off` and `log_errors = On` in the `php.ini`
-  that php-fpm or Apache loads.
+- PHP's built-in `display_errors` default is on when no `php.ini` is loaded.
+  Unless debug is on for the boot and errors may reach its output (the command
+  line, or a client Tracy shows itself to, see Errors), `build()` turns
+  `display_errors` and `display_startup_errors` off before any check that can
+  refuse *(dev)*; on `v0.14.0` it leaves them as they are. An error raised before `build()` (a
+  refused `!env` or YAML value) still prints, so production needs
+  `display_errors = Off`, `display_startup_errors = Off` and `log_errors = On`
+  in the `php.ini` that php-fpm or Apache loads.
 - Booleans accept only `true`/`false`, `1`/`0`, `on`/`off`, `yes`/`no`.
 - Read values through typed properties: `$config->security->maxBodySize`,
   `$config->session->name`, `$config->database` (null when the section is
@@ -633,15 +638,17 @@ without `required()` skips its rules when empty. Custom rule:
 
 A thrown exception becomes a fixed answer: 404 for no route or a parameter that
 does not cast, 405, 422 for `ValidationException`, otherwise 500
-`Internal Server Error` (JSON when asked). The message never reaches the client,
-and without an event dispatcher it reaches nobody (gotcha 13). Report and
-customize:
+`Internal Server Error` (JSON when asked). The message never reaches the client.
+An exception that ends in that 500 is written to the error log with its trace,
+the exception of a failing handler together with the one it was answering
+*(dev)*; on `v0.14.0` it reaches only an `ExceptionEvent` listener (gotcha 13).
+Report and customize:
 
 ```php
 $events = new EventDispatcher();
-$events->addListener(ExceptionEvent::class, function (ExceptionEvent $event): void {
+$events->addListener(ExceptionEvent::class, function (ExceptionEvent $event) use ($tracker): void {
     if (!$event->isRoutingFailure()) { // skip 404 and 405
-        error_log((string) $event->getException()); // or your error tracker
+        $tracker->report($event->getException()); // the error log already has every unhandled one (dev)
     }
 });
 
@@ -653,15 +660,16 @@ $builder = $builder
     );
 ```
 
-A handler may return `null` to keep the built-in answer. To let Tracy show an
-error in development, rethrow the same object:
+A handler may return `null` to keep the built-in answer. With debug on, an
+exception no handler answers reaches Tracy *(dev)*. A catch-all handler keeps it
+from Tracy, so rethrow the same object in debug:
 
 ```php
 $debug = $builder->isDebugEnabledForBoot();
 
 $builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwable $e, Request $request) use ($debug): ?Response {
     if ($debug) {
-        throw $e; // the same object: handle() rethrows it, so Tracy can show it
+        throw $e; // the same object: Tracy shows it to a client it admits; anyone else gets the logged 500
     }
     error_log($e::class . ': ' . $e->getMessage());
     return Response::html('<h1>Something went wrong</h1>', 500);
@@ -670,26 +678,49 @@ $builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwabl
 
 Take `$debug` from `$builder->isDebugEnabledForBoot()` *(0.14)* on the fully configured
 builder, never from `$config->application->debug`: in production and staging
-`build()` turns Tracy off but leaves that value `true`, and a rethrow without
-Tracy reaches PHP's own handler, which prints the message, server paths and
-trace whenever `display_errors` is on. "Fully configured" means after
+`build()` turns Tracy off but leaves that value `true`. A rethrow Tracy does not
+render, there or for a client it does not show itself to, is logged and answered
+with the generic 500 instead of your page *(dev)*; on `v0.14.0` it reaches PHP's
+own handler, which prints the message, server paths and trace whenever
+`display_errors` is on. "Fully configured" means after
 `withConfiguration()` (it returns `false` before) and after
 `withProductionDebugAcknowledged()` *(0.14)* if you use it (in a production-like
 environment it is `true` only then).
 
-`debug: true` alone shows nothing for a controller exception: without a handler
-that rethrows, the answer is a bare `500 Internal Server Error`, and nothing is
-logged unless an `ExceptionEvent` listener logs it.
+With `debug: true` and no handler, a controller exception shows the Bluescreen
+to a client Tracy renders for; any other client gets the generic 500 and the
+exception goes to the error log *(dev)*. On `v0.14.0`, `debug: true` alone shows
+nothing: the answer is a bare 500, logged only by an `ExceptionEvent` listener.
+In the command line with debug on (tests, scripts), an unhandled exception
+leaves `handle()` *(dev)*. `KernelBuilder::withUnhandledExceptionsRethrown()`
+forces that whatever the debug flag, through
+`new ApplicationBuilder(KernelBuilder::create()->withUnhandledExceptionsRethrown())`;
+outside a test, the exception then reaches PHP's own handler.
 
-A handler that throws anything else yields the fixed 500. With
-`application.debug: true`, Tracy only shows itself to loopback clients. Behind
-Docker the browser arrives from the bridge gateway, so name it with a secret
-and send that secret in a `tracy-debug` cookie:
+A handler that throws anything else yields the fixed text 500, and both
+exceptions go to the error log *(dev)*; where an unhandled exception would leave
+`handle()`, the handler's exception does instead. On `v0.14.0` only an
+`ExceptionEvent` listener sees them.
+
+With `application.debug: true` and no allowlist, Tracy only shows itself to
+loopback clients whose request carries no `X-Forwarded-For`, `Forwarded` or
+*(dev)* `X-Real-IP` header. Behind Docker the browser arrives from the bridge gateway, so name it
+with a secret and send that secret in a `tracy-debug` cookie:
 
 ```php
-// DEBUG_CLIENTS holds "secret@172.17.0.1"; unset or empty names no client beyond loopback.
+// DEBUG_CLIENTS holds "secret@172.17.0.1"; unset or empty leaves loopback only.
 $builder = $builder->withDebugClientAllowlist(env('DEBUG_CLIENTS'));
 ```
+
+A declared allowlist admits only its entries, so list loopback too if you want
+it *(dev)*. A bare loopback entry (`127.0.0.1`, `::1`) admits no request that
+carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP`: behind a proxy on the same
+host, list `secret@127.0.0.1` and send the cookie *(dev)*. A proxy on the same
+host that adds none of those headers (a bare nginx `proxy_pass`, socat, a TLS
+tunnel) shows the Bluescreen to every client, with no allowlist or with a bare
+loopback entry *(dev)*, so list `secret@127.0.0.1` and send the cookie there too.
+On `v0.14.0` any allowlist also admitted loopback, so such a proxy showed it to
+every client.
 
 The secret is a credential: keep it in the environment or an uncommitted
 `.env`, never in git. Each entry is an exact address or `secret@address`; an
@@ -926,6 +957,10 @@ CSRF token.
 `Request::fromArray()` takes the decoded body in `body:`; it does not decode a
 JSON `rawBody:` (gotcha 21).
 
+With `application.debug: true`, an exception nothing answers leaves `handle()`
+in a test, so PHPUnit reports it whole *(dev)*; with debug off the test gets the
+logged 500 (see Errors).
+
 ## Other modules
 
 Read the reference file when the task touches its subject:
@@ -1055,7 +1090,7 @@ out: environment = Production, isDebugEnabledForBoot() = false
 in:  no environment key
 out: environment = Production, debug = false
 in:  application: { environment: production, debug: true }, build()
-out: error_log: Zephyrus: application.debug is true while application.environment is production-like. Debug output has been FORCED OFF for this boot: ... If this is deliberate, call ApplicationBuilder::withProductionDebugAcknowledged(); even then, only clients named by withDebugClientAllowlist() (or loopback) can see it.
+out: error_log: Zephyrus: application.debug is true while application.environment is production-like. Debug output has been FORCED OFF for this boot: ... If this is deliberate, call ApplicationBuilder::withProductionDebugAcknowledged(); even then, only clients named by withDebugClientAllowlist() (or loopback, without one) can see it.   (dev; v0.14.0 ends "(or loopback) can see it.")
 ```
 
 **10. Booleans are strict, and an unset `!env` is null.** Give boolean tags a
@@ -1090,15 +1125,20 @@ in:  Configuration::fromYamlFile($path, ['database' => RenderConfig::class])   (
 out: InvalidArgumentException: Section factory "database" collides with the built-in section "database"; read it with $configuration->database instead.
 ```
 
-**13. Errors are invisible without an event dispatcher.** Each of these answers
-a bare 500 `Internal Server Error`; the reason only shows in an
-`ExceptionEvent` listener (see Errors).
+**13. The reason for a 500 never reaches the client.** Each of these answers a
+bare 500 `Internal Server Error`; the reason shows in the error log *(dev)* and
+in an `ExceptionEvent` listener. On `v0.14.0` only the listener sees it, so
+without an event dispatcher it reaches nobody. With debug on, Tracy shows it to
+a client it admits instead, and in the command line it leaves `handle()` (see
+Errors).
 
 ```text
 in:  a RenderResponses controller with no engine mounted, GET /view
-out: 500 "Internal Server Error"; ExceptionEvent: Zephyrus\Rendering\RenderException: No render engine has been configured. Call withRenderEngine() on the builder, or setRenderEngine() from your own controller factory.
+out: 500 "Internal Server Error"; error_log: Zephyrus: unhandled exception, answered with a 500: Zephyrus\Rendering\RenderException: No render engine has been configured. Call withRenderEngine() on the builder, or setRenderEngine() from your own controller factory. in ...
 in:  throw new RuntimeException('database password leaked in this message'), Accept: application/json
 out: 500 {"error":{"status":500,"message":"Internal Server Error"}} (the message stays server-side)
+in:  withExceptionHandler(RuntimeException::class, fn () => throw new LogicException('the handler broke')), a controller throws RuntimeException('connection refused')
+out: 500 "Internal Server Error"; error_log: Zephyrus: exception handler failed, answered with a 500: LogicException: the handler broke in ..., then Zephyrus: exception the failed handler was answering: RuntimeException: connection refused in ...   (dev; v0.14.0 logs nothing)
 ```
 
 **14. Routes on a parent's methods are not registered for its subclasses.**
@@ -1281,6 +1321,10 @@ in:  withDebugClientAllowlist('') or withDebugClientAllowlist(null)
 out: accepted: Tracy shows to loopback clients only
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
 out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
+in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 127.0.0.1 with no forwarded header
+out: no Tracy bar: loopback is not on the list (dev)   (v0.14.0: the bar)
+in:  DEBUG_CLIENTS=127.0.0.1, GET / from 127.0.0.1 with X-Forwarded-For or X-Real-IP (a proxy on the same host)
+out: no Tracy bar: a bare loopback entry admits no forwarded request; list secret@127.0.0.1 and send tracy-debug=secret (dev)   (v0.14.0: the bar)
 ```
 
 **31. A NULL column into a non-nullable property is a `TypeError`.** Declare
