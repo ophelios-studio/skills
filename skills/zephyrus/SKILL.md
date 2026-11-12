@@ -402,6 +402,13 @@ final class ProjectController extends Controller
   answers 405 with `Allow`. A trailing slash is tolerated.
 - `route('projects.show', ['id' => 12], ['tab' => 'files'])` *(0.14)* builds
   `/api/projects/12?tab=files` (in PHP and in Latte).
+- Two routes may not share a name *(dev)*: when they sit in two classes, or are
+  named with `Router::get()->name()`, `build()` throws
+  `DuplicateRouteNameException` (`Duplicate route names detected: projects.show`).
+  Two attribute routes of one class stop earlier, when the class is registered,
+  with `RouteAttributeException`. `v0.14.1` accepted a duplicate between classes
+  (`route()` picked the first) until `$router->assertNoDuplicateRouteNames()`
+  was called, which threw `RouteSignatureException`.
 - `#[Root]`, `#[Middleware]` and `#[RequiresEnv]` on a parent class apply to its
   subclasses. Route attributes on a parent's methods do not (gotcha 14).
 - `discoverControllers()` registers every concrete class under the directory
