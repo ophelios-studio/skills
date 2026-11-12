@@ -28,6 +28,8 @@ $builder = ApplicationBuilder::create()
 - Each request gets a fresh nonce: the header reads
   `default-src 'self'; script-src 'self' 'nonce-...'` and `nonce()` returns the
   same value for every tag of that request.
+- Several nonced CSP middlewares (an enforced and a report-only policy) share that
+  one nonce: the first mints it, the others reuse it.
 - Mount it after `SecureHeadersMiddleware`, or leave `security.headers.csp`
   empty. With a `csp` set and the CSP middleware first, `build()` refuses:
   `ContentSecurityPolicyMiddleware is registered before SecureHeadersMiddleware,
