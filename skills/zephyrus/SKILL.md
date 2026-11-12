@@ -794,7 +794,11 @@ final class Project extends Entity
 
 `new ProjectBroker($db)`, then `Project::build($row)` (`buildArray($rows)` for
 lists) casts each column to the property's declared type, maps backed enums
-with `from()` and nested `Entity` properties (from a JSON object column), and
+with `from()`, ISO date strings (`YYYY-MM-DD`, optional time, fraction and
+offset, as PostgreSQL renders them under the default ISO `DateStyle`; relative
+formats, `infinity`, BC dates, years over 4 digits and named time zones are
+refused) into `DateTimeImmutable`/`DateTime` and nested `Entity` properties
+(from a JSON object column), throws on a value it cannot hydrate, and
 `json_encode()` skips unassigned properties and those marked `#[JsonIgnore]`.
 A nullable column needs a nullable property (gotcha 31). Pagination, sorting
 and filtering from request input: `references/database.md`. Keep money exact
