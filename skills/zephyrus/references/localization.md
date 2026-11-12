@@ -19,7 +19,7 @@ localize('cart.items', ['count' => 3]);         // "3 items"
 localize('cart.items', ['count' => 0], 'fr');   // "0 article" (French: 0 is singular)
 localize('cart.total', ['amount' => 1234.5]);   // "Total: $1,234.50"
 localize('cart.missing');                       // "cart.missing"
-format('money', 1234.5);                        // "$1,234.50"
+format('money', 1234.5);                        // "$1,234.50" (locale en_CA; new Formatter('en', 'CAD') gives "CA$1,234.50")
 $app->transFromRequest('cart.items', ['count' => 1], Request::fromArray('GET', '/', headers: ['Accept-Language' => 'fr-CA,fr;q=0.9'])); // "1 article"
 ```
 

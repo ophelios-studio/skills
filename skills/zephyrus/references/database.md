@@ -63,5 +63,9 @@ $result->hasNext;    // false
   ... on property $status`.
 - An `Entity`-typed property is built from a `stdClass` value (a JSON object
   column, or a row you assemble).
+- Any other class-typed property (`DateTimeImmutable`, a value object) and any
+  union type stay uninitialized, without error: reading one throws `Error`, and
+  `json_encode()` skips it. Declare the column as `string` and convert it in a
+  method or getter.
 - `json_encode($entity)` skips properties the row did not set and properties
   marked `#[JsonIgnore]` (password hashes, internal ids).
