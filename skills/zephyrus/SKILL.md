@@ -550,6 +550,14 @@ To keep sessions in PostgreSQL, register `DatabaseSessionHandler` after
 It writes to `public.session` by default (the class docblock gives the
 `CREATE TABLE`): `$session->set('user_id', 7)` stores one row with `data`
 `user_id|i:7;`. Behind PgBouncer transaction pooling, pass `lockSessions: false`.
+Requests of one session wait for each other (PostgreSQL only, at most five
+seconds). When two still change it concurrently, the first write wins: the
+second request's changes are dropped and a flash it consumed shows again, with
+a PHP warning (`Failed to write session data`) and a `Zephyrus:` line in the
+error log. To lower privileges (a role or password change), call
+`$session->regenerate()`: it deletes the old row, so no request still holding
+it can write it back, in either order, unless that request regenerates its id
+too.
 
 There is no automatic token injection: render the field in every form.
 `csrfToken()` is not a core function: the bootstrap above registers it with
