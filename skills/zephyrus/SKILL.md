@@ -224,7 +224,7 @@ database:
   where `APP_ENV` is unset runs in development and the production debug
   force-off never fires. A developer sets `APP_ENV=dev` locally
   (`APP_ENV=dev php -S 127.0.0.1:8000 -t public`).
-- The framework never turns PHP's `display_errors` off, and PHP's built-in
+- Outside a boot refusal, the framework never turns PHP's `display_errors` off, and PHP's built-in
   default is on when no `php.ini` is loaded. Production needs `display_errors =
   Off`, `display_startup_errors = Off` and `log_errors = On` in the `php.ini`
   that php-fpm or Apache loads.
