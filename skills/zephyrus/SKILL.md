@@ -266,8 +266,9 @@ $config = Configuration::fromYamlFile($root . '/config.yml', ['billing' => Billi
 $billing = $config->section('billing'); // a BillingConfig
 ```
 
-A custom section does not refuse unknown keys, nor does `render:`: a
-misspelled key there silently takes the default.
+A section of your own does not refuse unknown keys: a misspelled key there
+silently takes the default. `render:` and `mailer:` do refuse them *(dev)*
+(`v0.14.1` ignored them: `render: { engin: php }` kept `latte`).
 
 ## Security wiring *(0.14)*
 
@@ -817,10 +818,15 @@ $db->registerTypeConversion('NUMERIC', static fn (string $value): string => $val
 
 Register `'mailer' => MailerConfig::class` (keys `smtp.host`, `smtp.port`,
 `smtp.username`, `smtp.password`, `smtp.encryption`, `from.address`,
-`from.name`). `smtp.encryption` takes `tls` (the default), `ssl`, or `''` for
-none; `encryption: none` stops the boot with `Configuration section 'mailer'
-field 'smtp.encryption' has invalid value "none": must be one of 'tls', 'ssl' or
-'' (empty, meaning no encryption at all); ...`.
+`from.name`), the complete list the section accepts *(dev)*: any other key
+stops the boot (`mailer: { smtp: { prot: 25 } }` gives `Configuration section
+'mailer' field 'smtp.prot' is an unknown key: did you mean "smtp.port"?`),
+where `v0.14.1` kept the default. `smtp.port` is read as an integer, so
+`toArray()` returns `1025`, not `'1025'`, for `!env MAIL_PORT, 1025`.
+`smtp.encryption` takes `tls` (the default), `ssl`, or `''` for none;
+`encryption: none` stops the boot with `Configuration section 'mailer' field
+'smtp.encryption' has invalid value "none": must be one of 'tls', 'ssl' or ''
+(empty, meaning no encryption at all); ...`.
 
 ```php
 try {
@@ -1004,8 +1010,8 @@ written for `v0.13.0`; a new app can skip them.
 
 **1. A misspelled section or key stops the boot.** Fix the spelling; keep one
 spelling per key. Only a name close to a built-in one is caught: an unrelated
-top-level key (`foo:`) passes silently (gotcha 2), and the `render:` section
-ignores unknown keys.
+top-level key (`foo:`) passes silently (gotcha 2). `render:` and `mailer:`
+refuse an unknown key *(dev)*; on `v0.14.1` they ignored it.
 
 ```text
 in:  sesion:
@@ -1014,6 +1020,8 @@ out: ConfigurationException: Configuration key 'sesion' is not a known section: 
 in:  session:
        samesite: Lax
 out: ConfigurationException: Configuration section 'session' field 'samesite' is an unknown key: did you mean "sameSite"?
+in:  render: { engin: php }, with ['render' => RenderConfig::class] (dev)
+out: ConfigurationException: Configuration section 'render' field 'engin' is an unknown key: did you mean "engine"?
 in:  security: { max_body_size: 10, maxBodySize: 10 }
 out: ConfigurationException: Configuration section 'security' sets both 'maxBodySize' and 'max_body_size': keep one.
 ```
