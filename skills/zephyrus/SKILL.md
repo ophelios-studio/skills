@@ -13,7 +13,8 @@ for PostgreSQL. No ORM, no migrations.
 Everything below was run against `v0.14.0`, the release a bare `composer
 require` installs. An API marked *(0.14)* is new in that release: `v0.13.0`
 lacks it, predates many breaking changes, and does not run the bootstrap below.
-The framework's `CHANGELOG.md` lists each change with the fix to make. The
+A behaviour marked *(dev)* is on the framework's `dev` branch, not yet released;
+the same passage says what `v0.14.0` does instead. The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
 
@@ -188,7 +189,7 @@ session:
 
 security:
   force_https: false
-  allowed_hosts: []                # host names only: no port, no scheme
+  allowed_hosts: []                # host names, no scheme; host:port pins the port (dev)
   max_body_size: 2097152           # bytes, no unit suffix
   trusted_proxies: []              # addresses or CIDR network addresses
   csrf:
@@ -292,13 +293,35 @@ value (gotcha 3):
 - Not checked: `trusted_proxies`, `session`, `encryption`. Mount
   `SessionMiddleware` yourself, and pass the proxies to `Request::fromGlobals()`.
 - Behind a proxy, `x-forwarded-host`, `-proto` and `-port` are read from their
-  FIRST value, which the client can supply: trust them only when the nearest
-  proxy overwrites them (nginx: `proxy_set_header X-Forwarded-Host $host;`,
-  `X-Forwarded-Proto $scheme`, `X-Forwarded-Port $server_port`), else list only
-  the headers it does overwrite in `trusted_headers`. `X-Forwarded-For` is read
-  from the right: the proxy must append to it (`$proxy_add_x_forwarded_for`) or
-  overwrite it. List `allowed_hosts` in production as the backstop; it does not
-  check ports.
+  LAST entry *(dev)*, the one the nearest proxy wrote; an empty last entry
+  counts as no header. That proxy must write each header you trust on every
+  request, by overwriting or appending (nginx: `proxy_set_header
+  X-Forwarded-Host $host;`, `X-Forwarded-Proto $scheme`, `X-Forwarded-Port
+  $server_port`). One that writes it only sometimes lets the client choose:
+  Apache's `mod_proxy` appends `X-Forwarded-Host` only when the request has a
+  `Host` (an HTTP/1.0 request without one keeps the client's value) and never
+  writes `-Proto` or `-Port`, so add `RequestHeader unset X-Forwarded-Host
+  early`, `RequestHeader set X-Forwarded-Proto expr=%{REQUEST_SCHEME}`, and in
+  each vhost `RequestHeader set X-Forwarded-Port` with the port it listens on
+  (`443` for TLS, `80` otherwise). Otherwise list only the headers your proxy
+  writes in `trusted_headers`. `v0.14.0` reads their FIRST value, which the
+  client supplies even through an appending proxy, so there the proxy must
+  overwrite them. `X-Forwarded-For` is read from the right: the proxy must
+  append to it (`$proxy_add_x_forwarded_for`) or overwrite it. Behind two
+  appending proxies, the value read is the nearest one's *(dev)*: if the outer
+  proxy rewrote `Host`, that is the internal name, so `allowed_hosts` refuses
+  it; let the outer proxy overwrite instead.
+- List `allowed_hosts` in production as the backstop. An entry without a port
+  admits every port. When the app builds absolute URLs from the request (reset
+  links, redirects), pin the port *(dev)*: `app.example.com:443`,
+  `[::1]:8080`, `*.example.com:443`. A pinned entry admits that port only, and
+  a URL without a port counts as 80 for http, 443 for https. With
+  `force_https`, also list the host on port 80, which then only reaches the
+  redirect: `[app.example.com:443, app.example.com:80]` answers
+  `http://app.example.com/` with a 308, `[app.example.com:443]` alone with a
+  400. Bracket an IPv6 literal to pin it: `::1:8080` is an address, admitted on
+  any port. `v0.14.0` refuses an entry with a port at boot. `*.example.com`
+  matches subdomains at any depth, never `example.com` itself.
 - `withoutSecurityWiringCheck()` turns the whole check off; prefer naming the
   one key with `withAcknowledgedSecurityKeys()`.
 
@@ -994,8 +1017,12 @@ out: InvalidArgumentException: security.csrf.exceptions[0] must start with "^" s
 ```text
 in:  max_body_size: 2M
 out: ConfigurationException: Configuration section 'security' field 'max_body_size' has invalid value "2M": must be a number of bytes, for example 2097152 (no unit suffix).
-in:  allowed_hosts: [localhost:8080]
+in:  allowed_hosts: [localhost:8080]  (v0.14.0)
 out: ConfigurationException: Configuration section 'security' field 'allowedHosts[0]' has invalid value "localhost:8080": ports are not matched: list "localhost" only.
+in:  allowed_hosts: [localhost:8080]  (dev)
+out: accepted: http://localhost:8080/ passes, http://localhost/ gets a 400
+in:  allowed_hosts: [localhost:65536]  (dev)
+out: ConfigurationException: Configuration section 'security' field 'allowedHosts[0]' has invalid value "localhost:65536": the port must be a number from 1 to 65535 without a leading zero.
 in:  allowed_hosts: ~
 out: ConfigurationException: Configuration section 'security' field 'allowedHosts' has invalid value null: an empty list is written [].
 in:  csrf: true
@@ -1148,6 +1175,10 @@ in:  REMOTE_ADDR 10.0.0.5, X-Forwarded-For 203.0.113.9, X-Forwarded-Proto https;
 out: clientIp() = 10.0.0.5, scheme = http
 in:  the same with trustedProxies: ['10.0.0.0/8']
 out: clientIp() = 203.0.113.9, scheme = https
+in:  the same, plus X-Forwarded-Host "evil.example, app.example.com" (appended by the proxy)
+out: host = app.example.com (dev); evil.example on v0.14.0
+in:  the same, plus X-Forwarded-Host "evil.example, " and Host app.example.com
+out: host = app.example.com, the Host header (dev); evil.example on v0.14.0
 ```
 
 **21. A malformed JSON body reads as empty.** Check `isMalformed()` *(0.14)* before
