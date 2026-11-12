@@ -38,8 +38,11 @@ $app->transFromRequest('cart.items', ['count' => 1], Request::fromArray('GET', '
 `localize()` uses the default locale (`localization.locale`) unless you pass
 one. `$app->transFromRequest()` and `$app->resolveLocaleFromRequest()` pick the
 locale from an explicit value, then `Accept-Language`, within
-`supported_locales`. For a whole request in another language, a middleware of
-yours resolves the locale and installs a translator and a formatter for it:
+`supported_locales`. A requested or header locale that fails
+`LocaleTag::isWellFormed()` (`en` and `fr-CA` pass, `../x` does not) is ignored
+even when no allowlist is given. For a whole request in another language, a
+middleware of yours resolves the locale and installs a translator and a
+formatter for it:
 
 ```php
 App::setTranslator(new Translator(new JsonLocaleLoader($root . '/locale'), 'fr_CA'));
@@ -65,3 +68,8 @@ In Latte, the formatter methods become filters only after
 ```latte
 {$price|money}   {$createdAt|date}
 ```
+
+A filter bound to a `Formatter` keeps that instance. When a middleware swaps the
+app formatter per request, pass a provider instead so each use reads the current
+one: `registerFormatterFilters(static fn (): Formatter => App::getFormatter() ?? $default)`
+(custom filter names are read once, at registration).
