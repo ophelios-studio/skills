@@ -30,12 +30,41 @@ try {
   the real file. A PHP
   file named `shell.png` is refused: `Upload MIME type "text/x-php" is not
   allowed. Allowed MIME types: image/png`.
-- The name is random hex unless you pass a third argument (`$targetName`). The
-  stored extension comes from the sniffed type only for a generated name. A
-  `$targetName` keeps its own extension, checked against `allowedExtensions`
-  alone, and with no `allowedExtensions` any extension passes. Never pass the
-  client's file name; when you pass a name, set `allowedExtensions` too. An
-  existing file is only replaced with `overwriteExisting: true`.
+- The name is random hex unless you pass a third argument (`$targetName`). A
+  generated name takes its extension from the sniffed type only: a PNG named
+  `a.php` is stored `<hex>.png`. A type absent from the default map (HTML,
+  PHP, and also SVG and XML, which run script when served) gets no extension,
+  unless the client's own extension is in `allowedExtensions`.
+- A `$targetName` is checked against the sniffed type. Its last extension must
+  be the one the type maps to (default table or `$mimeExtensionMap`) or a
+  common alias: `jpeg` and `jpe` for `image/jpeg`, `tif` for `image/tiff`,
+  `md` and `csv` for `text/plain`, `markdown` for `text/markdown`. Otherwise
+  `store()` refuses and says what it expected: `Upload target extension "php"
+  does not match the detected MIME type "image/png". Expected extension: png.`
+  A type with no mapped extension refuses any extension. Inner segments are
+  free (`report.v2.pdf`, `archive.tar.gz` for gzip bytes) except an executable
+  one, `php`, `php3` to `php8`, `phtml`, `phtm`, `pht`, `phps`, `phar`, `cgi`,
+  `fcgi`, `pl`, `py`, `shtml`, `shtm`, `stm`, `asp`, `aspx`, `jsp`, `jspx` (any
+  case): `shell.php.png` fails with `Upload target name carries the executable
+  extension "php" before its final extension.` That list is a minimum, not
+  every extension a server may run. A name without an extension is kept as is.
+  A name with a colon, an ASCII control character, a leading dot, or a trailing dot or
+  space is refused. `allowedExtensions` applies in addition, to EVERY segment:
+  `report.v2.pdf` needs `v2` in the list. Never pass the client's file name
+  unchecked. An existing file is only replaced with `overwriteExisting: true`.
+- To accept SVG, HTML or XML, declare the type in `$mimeExtensionMap`, never
+  through `allowedExtensions` (which only lets the client's extension pass).
+  Serve the result with `Content-Disposition: attachment` or a strict CSP
+  (`default-src 'none'; sandbox`), never inline from the app origin:
+
+```php
+$uploader = new Uploader(
+    $root . '/storage/logos',
+    allowedMimeTypes: ['image/svg+xml'],
+    mimeExtensionMap: ['image/svg+xml' => 'svg'],
+);
+```
+
 - *(0.14)* The default mover accepts only a genuine HTTP upload
   (`is_uploaded_file()`). Tests and command-line code inject their own:
 
