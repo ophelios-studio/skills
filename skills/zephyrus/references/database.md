@@ -73,7 +73,7 @@ and re-reads `config.yml` (symlink deploys); a process restart already clears th
 
 Only a statement whose first element, after blanks and comments, is a parenthesis or one of
 `SELECT`, `WITH`, `VALUES`, `TABLE`, `INSERT`, `UPDATE`, `DELETE`, `MERGE` uses the cache
-*(dev)*. Any other (`FETCH`, `EXECUTE`, `SHOW`, `CALL`, a leading `;`, a nested comment (an
+*(0.15)*. Any other (`FETCH`, `EXECUTE`, `SHOW`, `CALL`, a leading `;`, a nested comment (an
 old query left commented out, for instance)) has its columns described on every call,
 because the same text can return another shape. The cost is one to two round trips per
 column depending on the types, so fetch in large batches. On `v0.14.1` a `FETCH 1000 FROM c`
@@ -81,15 +81,15 @@ on a second cursor of the same width reused the first cursor's converters and it
 columns came back as strings.
 
 Queries of a `Database` built by `Database::fromConfig()` go out as unnamed statements with
-the parameters bound by the server, still not emulated *(dev)*; a `new Database($pdo)` keeps
+the parameters bound by the server, still not emulated *(0.15)*; a `new Database($pdo)` keeps
 named statements. On `v0.14.1` each query was a named statement, prepared and then
 closed (a `DEALLOCATE`, or a protocol close under libpq 17): three round trips per query
-against one on `dev`. That is two more per query, one to prepare and one to close.
+against one on `v0.15.0`. That is two more per query, one to prepare and one to close.
 
 ## Hydration rules
 
 Date strings and the refusals below (a date, a nested entity, an unsupported type or
-value) are on `dev` *(dev)*. On `v0.14.1` a date property stayed unset and most
+value) arrived in `v0.15.0` *(0.15)*. On `v0.14.1` a date property stayed unset and most
 values it could not hydrate were skipped without an error.
 
 - Columns convert by type: integers, floats, booleans, PostgreSQL arrays as

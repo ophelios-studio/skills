@@ -10,12 +10,12 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against `v0.14.1`, the release a bare `composer
+Everything below was run against `v0.15.0`, the release a bare `composer
 require` installs. An API marked *(0.14)* is new in `v0.14.0`: `v0.13.0`
 lacks it, predates many breaking changes, and does not run the bootstrap below.
 Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
-`v0.14.0` does instead. Behaviour marked *(dev)* is on the `dev` branch,
-unreleased since `v0.14.1`; the same passage says what `v0.14.1` does instead.
+`v0.14.0` does instead. Behaviour marked *(0.15)* arrived in `v0.15.0`; the same
+passage says what `v0.14.1` does instead.
 The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
@@ -26,14 +26,14 @@ follow the message.
 {
     "require": {
         "php": "^8.4",
-        "zephyrus-framework/core": "^0.14"
+        "zephyrus-framework/core": "^0.15"
     },
     "autoload": { "psr-4": { "App\\": "app/" } }
 }
 ```
 
-Packagist serves the release: no `repositories` entry. `^0.14` stays on
-0.14.x, since a minor version may break the API before 1.0. The core requires
+Packagist serves the release: no `repositories` entry. `^0.15` stays on
+0.15.x, since a minor version may break the API before 1.0. The core requires
 `ext-intl`, `ext-mbstring`, `ext-pdo`, `ext-sodium` and `ext-fileinfo`, and
 brings `latte/latte`, `tracy/tracy`, `symfony/yaml`, `vlucas/phpdotenv` and
 `phpmailer/phpmailer`. PostgreSQL needs `pdo_pgsql`.
@@ -267,7 +267,7 @@ $billing = $config->section('billing'); // a BillingConfig
 ```
 
 A section of your own does not refuse unknown keys: a misspelled key there
-silently takes the default. `render:` and `mailer:` do refuse them *(dev)*
+silently takes the default. `render:` and `mailer:` do refuse them *(0.15)*
 (`v0.14.1` ignored them: `render: { engin: php }` kept `latte`).
 
 ## Security wiring *(0.14)*
@@ -402,7 +402,7 @@ final class ProjectController extends Controller
   answers 405 with `Allow`. A trailing slash is tolerated.
 - `route('projects.show', ['id' => 12], ['tab' => 'files'])` *(0.14)* builds
   `/api/projects/12?tab=files` (in PHP and in Latte).
-- Two routes may not share a name *(dev)*: when they sit in two classes, or are
+- Two routes may not share a name *(0.15)*: when they sit in two classes, or are
   named with `Router::get()->name()`, `build()` throws
   `DuplicateRouteNameException` (`Duplicate route names detected: projects.show`).
   Two attribute routes of one class stop earlier, when the class is registered,
@@ -486,7 +486,7 @@ In 0.14.0, `Response` has no cookie API and holds one value per header name. A
 (the emitter calls `header()`), the session cookie included: keep the value in
 the session, or set it on a response that sets no other cookie.
 
-On `dev` *(unreleased, not in 0.14.0)*, the emitter adds each `Set-Cookie`
+From `v0.14.1` *(0.14.1)*, the emitter adds each `Set-Cookie`
 line instead, so the session cookie and `setcookie()` calls survive, and
 `withCookie()` sets several cookies. It defaults to `Path=/; Secure; HttpOnly;
 SameSite=Lax`, percent-encodes the value as `setcookie()` does, replaces an
@@ -559,7 +559,7 @@ It writes to `public.session` by default (the class docblock gives the
 `CREATE TABLE`): `$session->set('user_id', 7)` stores one row with `data`
 `user_id|i:7;`. Behind PgBouncer transaction pooling, pass `lockSessions: false`.
 Requests of one session wait for each other (PostgreSQL only, at most five
-seconds). When two still change it concurrently, the first write wins *(dev)*:
+seconds). When two still change it concurrently, the first write wins *(0.15)*:
 the second request's changes are dropped and a flash it consumed shows again,
 with a PHP warning (`Failed to write session data`) and a `Zephyrus:` line in
 the error log. On `v0.14.1` the second write overwrote the first, silently.
@@ -720,7 +720,7 @@ exceptions go to the error log *(0.14.1)*; where an unhandled exception would le
 `ExceptionEvent` listener sees them.
 
 With `application.debug: true` and no allowlist, Tracy only shows itself to a
-loopback client under PHP's built-in server (`php -S`) *(dev)*, and only when the
+loopback client under PHP's built-in server (`php -S`) *(0.15)*, and only when the
 request carries no `X-Forwarded-For`, `Forwarded` or *(0.14.1)* `X-Real-IP`
 header. Under FPM, CGI or Apache it shows to no one without an allowlist: list
 `127.0.0.1` for a browser on the same machine. On `v0.14.1` loopback was admitted
@@ -768,11 +768,11 @@ decoding: for up to an hour under PHP-FPM with APCu, and in a long-running proce
 RoadRunner) until it restarts or calls `Database::flushSharedColumnMetadata()`. Under
 PHP-FPM without APCu it lasts only the current request.
 Only a statement starting with `SELECT`, `WITH`, `VALUES`, `TABLE`, `INSERT`, `UPDATE`,
-`DELETE`, `MERGE` or a parenthesis is served from the column type cache *(dev)*; any
+`DELETE`, `MERGE` or a parenthesis is served from the column type cache *(0.15)*; any
 other (`FETCH`, `EXECUTE`, `SHOW`, `CALL`) has its columns described on every call, one to two
 round trips per column depending on the types, so fetch cursors in large batches. On `v0.14.1`
 a second cursor of the same width inherited the first one's converters. Queries of a `Database`
-built by `fromConfig()` go out as unnamed statements, bound by the server *(dev)* (on
+built by `fromConfig()` go out as unnamed statements, bound by the server *(0.15)* (on
 `v0.14.1` each was a named statement, prepared and then closed (a `DEALLOCATE`, or a
 protocol close under libpq 17)); a `new Database($pdo)` keeps named statements. See
 `references/database.md`.
@@ -822,7 +822,7 @@ with `from()`, ISO date strings (`YYYY-MM-DD`, optional time, fraction and
 offset, as PostgreSQL renders them under the default ISO `DateStyle`; relative
 formats, `infinity`, BC dates, years over 4 digits and named time zones are
 refused) into `DateTimeImmutable`/`DateTime` and nested `Entity` properties
-(from a JSON object column), throws on a value it cannot hydrate *(dev)*, and
+(from a JSON object column), throws on a value it cannot hydrate *(0.15)*, and
 `json_encode()` skips unassigned properties and those marked `#[JsonIgnore]`.
 On `v0.14.1` a date property stayed unset and most values it could not hydrate
 were skipped without an error. A nullable column needs a nullable property
@@ -838,7 +838,7 @@ $db->registerTypeConversion('NUMERIC', static fn (string $value): string => $val
 
 Register `'mailer' => MailerConfig::class` (keys `smtp.host`, `smtp.port`,
 `smtp.username`, `smtp.password`, `smtp.encryption`, `from.address`,
-`from.name`), the complete list the section accepts *(dev)*: any other key
+`from.name`), the complete list the section accepts *(0.15)*: any other key
 stops the boot (`mailer: { smtp: { prot: 25 } }` gives `Configuration section
 'mailer' field 'smtp.prot' is an unknown key: did you mean "smtp.port"?`),
 where `v0.14.1` kept the default. `smtp.port` is read as an integer, so
@@ -1031,7 +1031,7 @@ written for `v0.13.0`; a new app can skip them.
 **1. A misspelled section or key stops the boot.** Fix the spelling; keep one
 spelling per key. Only a name close to a built-in one is caught: an unrelated
 top-level key (`foo:`) passes silently (gotcha 2). `render:` and `mailer:`
-refuse an unknown key *(dev)*; on `v0.14.1` they ignored it.
+refuse an unknown key *(0.15)*; on `v0.14.1` they ignored it.
 
 ```text
 in:  sesion:
@@ -1040,7 +1040,7 @@ out: ConfigurationException: Configuration key 'sesion' is not a known section: 
 in:  session:
        samesite: Lax
 out: ConfigurationException: Configuration section 'session' field 'samesite' is an unknown key: did you mean "sameSite"?
-in:  render: { engin: php }, with ['render' => RenderConfig::class] (dev)
+in:  render: { engin: php }, with ['render' => RenderConfig::class] (0.15)
 out: ConfigurationException: Configuration section 'render' field 'engin' is an unknown key: did you mean "engine"?
 in:  security: { max_body_size: 10, maxBodySize: 10 }
 out: ConfigurationException: Configuration section 'security' sets both 'maxBodySize' and 'max_body_size': keep one.
@@ -1364,9 +1364,9 @@ out: InvalidArgumentException: Debug client allowlist entry 1 is a range: Tracy 
 in:  withDebugClientAllowlist(['secret@10.0.0.5 other@10.0.0.6'])
 out: InvalidArgumentException: Debug client allowlist entry 1 holds whitespace or a comma: pass each address as its own array entry.
 in:  withDebugClientAllowlist('') or withDebugClientAllowlist(null)
-out: accepted: Tracy shows to loopback clients only, under php -S (dev); on v0.14.1 under every SAPI
+out: accepted: Tracy shows to loopback clients only, under php -S (0.15); on v0.14.1 under every SAPI
 in:  no allowlist, GET / from 127.0.0.1 with no forwarded header, under FPM, CGI or Apache
-out: no Tracy bar: list 127.0.0.1 (dev)   (v0.14.1: the bar)
+out: no Tracy bar: list 127.0.0.1 (0.15)   (v0.14.1: the bar)
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
 out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 127.0.0.1 with no forwarded header
