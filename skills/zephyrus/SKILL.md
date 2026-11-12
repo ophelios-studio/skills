@@ -370,7 +370,7 @@ final class ProjectController extends Controller
 - A static route beats a parameterized one whatever the order (`/users/me`
   wins over `/users/{id}`). A GET route also answers HEAD; a wrong method
   answers 405 with `Allow`. A trailing slash is tolerated.
-- `route('projects.show', ['id' => 12], ['tab' => 'files'])` builds
+- `route('projects.show', ['id' => 12], ['tab' => 'files'])` *(0.14)* builds
   `/api/projects/12?tab=files` (in PHP and in Latte).
 - `#[Root]`, `#[Middleware]` and `#[RequiresEnv]` on a parent class apply to its
   subclasses. Route attributes on a parent's methods do not (gotcha 14).
@@ -439,7 +439,7 @@ $back = Response::localRedirect('//evil.example/phish', '/'); // off-site target
 `abortJson()` and `validate()`, plus `before()`/`after()` hooks; an override of
 `before()` must call `parent::before($request)` or `$this->request` stays
 unset. Plain classes work as controllers too. `withHeader()` refuses control
-characters; check untrusted values with `Response::isValidHeaderValue()`, and
+characters; check untrusted values with `Response::isValidHeaderValue()` *(0.14)*, and
 redirect to user-supplied targets with `localRedirect()`. Uploads:
 `$request->file('avatar')` returns a `FileUpload` or `null`; store it with
 `Uploader` (see `references/uploads.md`).
@@ -620,13 +620,13 @@ $builder = $builder->withExceptionHandler(\Throwable::class, function (\Throwabl
 });
 ```
 
-Take `$debug` from `$builder->isDebugEnabledForBoot()` on the fully configured
+Take `$debug` from `$builder->isDebugEnabledForBoot()` *(0.14)* on the fully configured
 builder, never from `$config->application->debug`: in production and staging
 `build()` turns Tracy off but leaves that value `true`, and a rethrow without
 Tracy reaches PHP's own handler, which prints the message, server paths and
 trace whenever `display_errors` is on. "Fully configured" means after
 `withConfiguration()` (it returns `false` before) and after
-`withProductionDebugAcknowledged()` if you use it (in a production-like
+`withProductionDebugAcknowledged()` *(0.14)* if you use it (in a production-like
 environment it is `true` only then).
 
 `debug: true` alone shows nothing for a controller exception: without a handler
@@ -1125,7 +1125,7 @@ in:  the same with trustedProxies: ['10.0.0.0/8']
 out: clientIp() = 203.0.113.9, scheme = https
 ```
 
-**21. A malformed JSON body reads as empty.** Check `isMalformed()` before
+**21. A malformed JSON body reads as empty.** Check `isMalformed()` *(0.14)* before
 validating, or a broken payload fails as "required" fields.
 
 ```text
@@ -1186,7 +1186,7 @@ out: InvalidArgumentException: Query parameter #1 cannot be bound: array has no 
 ```
 
 **27. `DatabaseException` messages withhold the SQL and the driver text.**
-Branch on `sqlState()`; log `driverMessage()` and `sql()`.
+Branch on `sqlState()`; log `driverMessage()` and `sql()` (all three *(0.14)*).
 
 ```text
 in:  a duplicate value on a UNIQUE column
@@ -1268,7 +1268,7 @@ out: "Total : 1 234,50 $" (the two spaces the formatter writes are U+00A0)
 | Controller factory | `withControllerFactory(fn (string $class): object => new $class($deps))` |
 | Report errors | `withEventDispatcher($events)` + `ExceptionEvent` listener |
 | Custom error page | `withExceptionHandler(RouteNotFoundException::class, fn ($e, Request $r) => ...)` |
-| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` with `DEBUG_CLIENTS=secret@<gateway-ip>` + `tracy-debug=secret` cookie |
+| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` *(0.14)* with `DEBUG_CLIENTS=secret@<gateway-ip>` + `tracy-debug=secret` cookie |
 | Route | `#[Get('/x/{id}', constraints: ['id' => '\d+'], middlewares: ['auth'], name: 'x.show')]` |
 | URL for a route | `route('x.show', ['id' => 1])` |
 | Per-process routes | `#[RequiresEnv('MODE', 'api')]` on a base controller |
