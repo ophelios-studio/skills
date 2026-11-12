@@ -36,7 +36,7 @@ try {
   alone, and with no `allowedExtensions` any extension passes. Never pass the
   client's file name; when you pass a name, set `allowedExtensions` too. An
   existing file is only replaced with `overwriteExisting: true`.
-- *(dev)* The default mover accepts only a genuine HTTP upload
+- *(0.14)* The default mover accepts only a genuine HTTP upload
   (`is_uploaded_file()`). Tests and command-line code inject their own:
 
 ```php

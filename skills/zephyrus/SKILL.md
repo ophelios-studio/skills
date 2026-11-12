@@ -10,12 +10,10 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against the `dev` branch at commit `2842a2b`
-(Packagist `dev-dev`, what the apps pin). The last tag, `v0.13.0` (what a bare
-`composer require` installs), predates many breaking changes and lacks every
-API marked *(dev)*, which means on dev, unreleased since `v0.13.0`; the
-bootstrap below does not run on it. The framework's `CHANGELOG.md` lists each
-change with the fix to make. Before 1.0 a minor version may break the API. The
+Everything below was run against `v0.14.0`, the release a bare `composer
+require` installs. An API marked *(0.14)* is new in that release: `v0.13.0`
+lacks it, predates many breaking changes, and does not run the bootstrap below.
+The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
 
@@ -23,17 +21,16 @@ follow the message.
 
 ```json
 {
-    "minimum-stability": "dev",
-    "prefer-stable": true,
     "require": {
         "php": "^8.4",
-        "zephyrus-framework/core": "dev-dev"
+        "zephyrus-framework/core": "^0.14"
     },
     "autoload": { "psr-4": { "App\\": "app/" } }
 }
 ```
 
-Packagist serves `dev-dev`: no `repositories` entry. The core requires
+Packagist serves the release: no `repositories` entry. `^0.14` stays on
+0.14.x, since a minor version may break the API before 1.0. The core requires
 `ext-intl`, `ext-mbstring`, `ext-pdo`, `ext-sodium` and `ext-fileinfo`, and
 brings `latte/latte`, `tracy/tracy`, `symfony/yaml`, `vlucas/phpdotenv` and
 `phpmailer/phpmailer`. PostgreSQL needs `pdo_pgsql`.
@@ -42,22 +39,22 @@ Where each class lives (the PSR-4 root is `Zephyrus\` under `src/Zephyrus/`):
 
 | Namespace | Classes |
 | --- | --- |
-| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` *(dev)* |
+| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` *(0.14)* |
 | `Zephyrus\Core\Config` | `Configuration`, `ConfigSection`, `ConfigurationException`, `DatabaseConfig`, `Environment` |
 | `Zephyrus\Http` | `Request`, `Response`, `MiddlewareInterface` |
 | `Zephyrus\Routing` | `Router` |
-| `Zephyrus\Routing\Attribute` | `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options`, `Route`, `Root`, `Middleware`, `MiddlewareGroup`, `WithoutMiddleware` *(dev)*, `RequiresEnv` |
+| `Zephyrus\Routing\Attribute` | `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options`, `Route`, `Root`, `Middleware`, `MiddlewareGroup`, `WithoutMiddleware` *(0.14)*, `RequiresEnv` |
 | `Zephyrus\Routing\Exception` | `RouteNotFoundException`, `RouteMiddlewareException`, `RouteSignatureException` |
 | `Zephyrus\Controller` | `Controller` |
 | `Zephyrus\Rendering` | `LatteEngine`, `PhpEngine`, `RenderResponses`, `RenderConfig`, `Asset`, `RenderException` |
-| `Zephyrus\Security` | `SecureHeadersMiddleware`, `SecureHeadersConfig`, `MaxBodySizeMiddleware` *(dev)*, `BodyTooLarge` *(dev)*, `CsrfMiddleware`, `CsrfConfig`, `CsrfFailure` *(dev)*, `CsrfTokenManagerInterface`, `ForceHttpsMiddleware`, `AllowedHostsMiddleware`, `ContentSecurityPolicy`, `ContentSecurityPolicyMiddleware`, `Cryptography`, `AuthGuardMiddleware`, `HeaderTokenGuard`, `IpAllowlistGuard`, `RequestAttributeGuard`, `PredicateAuthGuard`, `AllAuthGuard`, `AnyAuthGuard`, `NotAuthGuard` |
+| `Zephyrus\Security` | `SecureHeadersMiddleware`, `SecureHeadersConfig`, `MaxBodySizeMiddleware` *(0.14)*, `BodyTooLarge` *(0.14)*, `CsrfMiddleware`, `CsrfConfig`, `CsrfFailure` *(0.14)*, `CsrfTokenManagerInterface`, `ForceHttpsMiddleware`, `AllowedHostsMiddleware`, `ContentSecurityPolicy`, `ContentSecurityPolicyMiddleware`, `Cryptography`, `AuthGuardMiddleware`, `HeaderTokenGuard`, `IpAllowlistGuard`, `RequestAttributeGuard`, `PredicateAuthGuard`, `AllAuthGuard`, `AnyAuthGuard`, `NotAuthGuard` |
 | `Zephyrus\Session` | `SessionManager`, `SessionMiddleware`, `SessionCsrfTokenManager`, `DatabaseSessionHandler`, `Flash`, `SessionException` |
 | `Zephyrus\Validation` | `FormValidator`, `Rules`, `Rule`, `ErrorBag`, `ValidationException` |
 | `Zephyrus\Event` | `EventDispatcher` |
-| `Zephyrus\Data` | `Database`, `Broker`, `Entity`, `JsonIgnore`, `Binary` *(dev)*, `DatabaseException`, `PaginationRequest`, `SortRequest`, `FilterRequest`, `PaginatedResult` |
+| `Zephyrus\Data` | `Database`, `Broker`, `Entity`, `JsonIgnore`, `Binary` *(0.14)*, `DatabaseException`, `PaginationRequest`, `SortRequest`, `FilterRequest`, `PaginatedResult` |
 | `Zephyrus\Upload` | `Uploader`, `FileUpload`, `UploadException` |
 | `Zephyrus\Localization` | `Translator`, `JsonLocaleLoader` |
-| `Zephyrus\Mailer` | `Mailer`, `MailerConfig`, `MailerException`, `MailerFailure` *(dev)* |
+| `Zephyrus\Mailer` | `Mailer`, `MailerConfig`, `MailerException`, `MailerFailure` *(0.14)* |
 | `Zephyrus\Formatting` | `Formatter`, `FormatterException` |
 | `Zephyrus\Container` | `Container` |
 
@@ -141,7 +138,7 @@ What the builder does and does not do:
 - `withMiddleware()` mounts a global middleware: it runs on every request,
   including 404 and 405 answers, outermost first. `registerMiddleware('name', $m)`
   only names one; it runs on routes that reference the name.
-- `withRenderEngine()` *(dev)* injects the engine into every controller using
+- `withRenderEngine()` *(0.14)* injects the engine into every controller using
   `RenderResponses`, including controllers built by `withControllerFactory()`
   or `withContainer(new Container())` (auto-wires constructor dependencies;
   `bind()`, `singleton()`, `instance()` register your own).
@@ -265,7 +262,7 @@ $billing = $config->section('billing'); // a BillingConfig
 A custom section does not refuse unknown keys, nor does `render:`: a
 misspelled key there silently takes the default.
 
-## Security wiring *(dev)*
+## Security wiring *(0.14)*
 
 Declaring a key under `security:` is a promise. `build()` refuses to boot
 unless a middleware passed to `withMiddleware()` enforces it with the same
@@ -380,7 +377,7 @@ final class ProjectController extends Controller
 - `discoverControllers()` registers every concrete class under the directory
   whose namespace matches; a wrong directory or namespace registers nothing,
   silently (gotcha 15).
-- `#[WithoutMiddleware(SessionMiddleware::class)]` *(dev)* on a class or method
+- `#[WithoutMiddleware(SessionMiddleware::class)]` *(0.14)* on a class or method
   skips a global middleware for matched routes (a stateless webhook, a health
   probe). The framework's security middleware (`ForceHttps`, `AllowedHosts`,
   `Csrf`, `MaxBodySize`, `SecureHeaders`, `ContentSecurityPolicy`) cannot be
@@ -438,7 +435,7 @@ $back = Response::localRedirect('//evil.example/phish', '/'); // off-site target
 ```
 
 `Controller` (optional base class) adds `json()`, `created()`, `text()`,
-`noContent()`, `respond()`, `redirect()`, `localRedirect()` *(dev)*, `abort()`,
+`noContent()`, `respond()`, `redirect()`, `localRedirect()` *(0.14)*, `abort()`,
 `abortJson()` and `validate()`, plus `before()`/`after()` hooks; an override of
 `before()` must call `parent::before($request)` or `$this->request` stays
 unset. Plain classes work as controllers too. `withHeader()` refuses control
@@ -744,7 +741,7 @@ Build one `Mailer` per message: `send()` keeps the recipients, so a reused
 instance mails the next message to the previous addresses too (gotcha 32).
 `html()`, `template('emails/welcome', [...])` (with a render engine as second
 constructor argument), `attach($path)` and `attachContent($bytes, 'report.pdf')`
-*(dev)* complete the builder.
+*(0.14)* complete the builder.
 
 ## Testing
 
@@ -899,7 +896,7 @@ internals or niche helpers that most apps never call.
 
 ## Gotchas, each with its repro
 
-Every repro below shows the input, then the observed result on `2842a2b`. The
+Every repro below shows the input, then the observed result on `v0.14.0`. The
 PostgreSQL repros (23 to 28) were last run on `0f65185`; the database code has
 not changed since. Repros marked *(upgrading from 0.13)* only concern an app
 written for `v0.13.0`; a new app can skip them.

@@ -30,7 +30,7 @@ $app->transFromRequest('cart.items', ['count' => 1], Request::fromArray('GET', '
   `lower`, `upper`, `title`, `trim`, `ltrim`, `rtrim`, `number`, `truncate`,
   `plural` (`singular:plural`, the word only), `default`; any `Formatter` name
   (`money`, `date`, ...) also works as a pipe. An unknown pipe throws
-  `LocalizationException` *(dev)*.
+  `LocalizationException` *(0.14)*.
 - `i18n()` is an alias of `localize()`.
 
 ## The request locale
@@ -57,7 +57,7 @@ behind `format()`. A command-line script that never calls `build()` must call
 `App::setFormatter()` first. Built-in names: `money`, `decimal`, `percent`,
 `ordinal`, `spellOut`, `date`, `time`, `datetime`, `timeago`, `duration`,
 `filesize`, `list`, `truncate`; an unknown name throws `FormatterException` (its message listing the
-built-in names is *(dev)*; earlier releases name only the formatter). Register your own with `$formatter->register('initials', fn (string $name): string => ...)`.
+built-in names is *(0.14)*; earlier releases name only the formatter). Register your own with `$formatter->register('initials', fn (string $name): string => ...)`.
 
 In Latte, the formatter methods become filters only after
 `$latteEngine->registerFormatterFilters($formatter)`:

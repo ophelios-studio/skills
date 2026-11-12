@@ -60,7 +60,7 @@ Cryptography::verifyPassword('correct horse', $hash); // true
   tenant fails with `CryptographyException: Decryption failed. The ciphertext
   may be corrupted or the key is incorrect.`
 - Passing the encoded key straight to `encrypt()` fails (`Key must be exactly
-  32 bytes`); an all-zero key is refused *(dev)*.
+  32 bytes`); an all-zero key is refused *(0.14)*.
 - `hashPassword()` produces argon2id; `needsRehash()` tells when to re-hash at
   the next sign-in.
 - Tokens: `Cryptography::randomHex(32)` (32 characters), `randomString()`,
