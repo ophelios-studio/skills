@@ -444,10 +444,35 @@ redirect to user-supplied targets with `localRedirect()`. Uploads:
 `$request->file('avatar')` returns a `FileUpload` or `null`; store it with
 `Uploader` (see `references/uploads.md`).
 
-`Response` has no cookie API and holds one value per header name. A
+In 0.14.0, `Response` has no cookie API and holds one value per header name. A
 `Set-Cookie` header on a `Response` replaces every cookie PHP already queued
 (the emitter calls `header()`), the session cookie included: keep the value in
 the session, or set it on a response that sets no other cookie.
+
+On `dev` *(unreleased, not in 0.14.0)*, the emitter adds each `Set-Cookie`
+line instead, so the session cookie and `setcookie()` calls survive, and
+`withCookie()` sets several cookies. It defaults to `Path=/; Secure; HttpOnly;
+SameSite=Lax`, percent-encodes the value as `setcookie()` does, replaces an
+earlier cookie of the same name, domain and path (the domain compared without
+case or a leading dot; the same name on another domain or path is kept as its
+own line), and refuses what browsers would drop.
+`Secure` is on by default even where `session.secure` is `auto`: pass it from the
+request, as below. `hasHeader('Set-Cookie')` is true when only cookies exist,
+and `withoutHeader('Set-Cookie')` also clears them (`getHeader()` still reads
+only the header set by `withHeader()`). `new Response(cookies: [...])` takes a
+list of lines, never a name-to-value map:
+
+```php
+$response = Response::noContent()
+    ->withCookie('theme', 'dark', maxAge: 31_536_000) // maxAge: 0 expires it
+    ->withCookie('lang', 'fr', secure: $request->uri()->isSecure()); // false on plain-HTTP development
+$response->cookies; // ['theme=dark; Max-Age=31536000; Path=/; Secure; HttpOnly; SameSite=Lax',
+                    //  'lang=fr; Path=/; HttpOnly; SameSite=Lax']
+$response->withCookie('sid', 'x', sameSite: 'None', secure: false);
+// InvalidArgumentException: Cookie "sid" cannot use SameSite=None without Secure: browsers discard it.
+$response->withCookie('__Host-sid', 'x', path: '/app');
+// InvalidArgumentException: Cookie "__Host-sid" uses the __Host- prefix, which requires Secure, the path "/" and no domain.
+```
 
 ## Middleware
 
@@ -869,8 +894,8 @@ statics `App` holds (configuration, session, formatter, asset, URL generator,
 translator, nonce), and only `build()` installs the URL generator again: an
 application built once per class makes `route()` throw `LogicException: route()
 needs the application routes` from the second test on. `$_SESSION = []` is
-a separate step: in-process there is no cookie to carry (`handle()` returns no
-`Set-Cookie`), the PHP session lives for the whole process, and `reset()` does
+a separate step: in-process there is no cookie to carry (`handle()` never
+returns the session cookie), the PHP session lives for the whole process, and `reset()` does
 not touch it, so without that line a test signed in earlier leaks into the next
 one. The same process-wide session is why a GET followed by a POST shares one
 CSRF token.
