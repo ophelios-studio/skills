@@ -51,6 +51,10 @@ $result->hasNext;    // false
 
 ## Hydration rules
 
+Date strings and the refusals below (a date, a nested entity, an unsupported type or
+value) are on `dev` *(dev)*. On `v0.14.1` a date property stayed unset and most
+values it could not hydrate were skipped without an error.
+
 - Columns convert by type: integers, floats, booleans, PostgreSQL arrays as
   PHP arrays, JSON and JSONB decoded (objects as `stdClass`). `NUMERIC` becomes
   a float (gotcha 23), `bytea` a stream (gotcha 24).

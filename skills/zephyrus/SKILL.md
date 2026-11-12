@@ -14,8 +14,8 @@ Everything below was run against `v0.14.1`, the release a bare `composer
 require` installs. An API marked *(0.14)* is new in `v0.14.0`: `v0.13.0`
 lacks it, predates many breaking changes, and does not run the bootstrap below.
 Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
-`v0.14.0` does instead. A *dev* marker will flag behaviour on the `dev` branch
-unreleased since the last tag; the same passage says what the release does instead.
+`v0.14.0` does instead. Behaviour marked *(dev)* is on the `dev` branch,
+unreleased since `v0.14.1`; the same passage says what `v0.14.1` does instead.
 The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
@@ -551,11 +551,11 @@ It writes to `public.session` by default (the class docblock gives the
 `CREATE TABLE`): `$session->set('user_id', 7)` stores one row with `data`
 `user_id|i:7;`. Behind PgBouncer transaction pooling, pass `lockSessions: false`.
 Requests of one session wait for each other (PostgreSQL only, at most five
-seconds). When two still change it concurrently, the first write wins: the
-second request's changes are dropped and a flash it consumed shows again, with
-a PHP warning (`Failed to write session data`) and a `Zephyrus:` line in the
-error log. To lower privileges (a role or password change), call
-`$session->regenerate()`: it deletes the old row, so no request still holding
+seconds). When two still change it concurrently, the first write wins *(dev)*:
+the second request's changes are dropped and a flash it consumed shows again,
+with a PHP warning (`Failed to write session data`) and a `Zephyrus:` line in
+the error log. On `v0.14.1` the second write overwrote the first, silently.
+To lower privileges (a role or password change), call `$session->regenerate()`: it deletes the old row, so no request still holding
 it can write it back, in either order, unless that request regenerates its id
 too.
 
@@ -711,13 +711,16 @@ exceptions go to the error log *(0.14.1)*; where an unhandled exception would le
 `handle()`, the handler's exception does instead. On `v0.14.0` only an
 `ExceptionEvent` listener sees them.
 
-With `application.debug: true` and no allowlist, Tracy only shows itself to
-loopback clients whose request carries no `X-Forwarded-For`, `Forwarded` or
-*(0.14.1)* `X-Real-IP` header. Behind Docker the browser arrives from the bridge gateway, so name it
+With `application.debug: true` and no allowlist, Tracy only shows itself to a
+loopback client under PHP's built-in server (`php -S`) *(dev)*, and only when the
+request carries no `X-Forwarded-For`, `Forwarded` or *(0.14.1)* `X-Real-IP`
+header. Under FPM, CGI or Apache it shows to no one without an allowlist: list
+`127.0.0.1` for a browser on the same machine. On `v0.14.1` loopback was admitted
+under every SAPI. Behind Docker the browser arrives from the bridge gateway, so name it
 with a secret and send that secret in a `tracy-debug` cookie:
 
 ```php
-// DEBUG_CLIENTS holds "secret@172.17.0.1"; unset or empty leaves loopback only.
+// DEBUG_CLIENTS holds "secret@172.17.0.1"; unset or empty leaves loopback only, under php -S.
 $builder = $builder->withDebugClientAllowlist(env('DEBUG_CLIENTS'));
 ```
 
@@ -726,10 +729,10 @@ it *(0.14.1)*. A bare loopback entry (`127.0.0.1`, `::1`) admits no request that
 carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP`: behind a proxy on the same
 host, list `secret@127.0.0.1` and send the cookie *(0.14.1)*. A proxy on the same
 host that adds none of those headers (a bare nginx `proxy_pass`, socat, a TLS
-tunnel) shows the Bluescreen to every client, with no allowlist or with a bare
-loopback entry *(0.14.1)*, so list `secret@127.0.0.1` and send the cookie there too.
-On `v0.14.0` any allowlist also admitted loopback, so such a proxy showed it to
-every client.
+tunnel) shows the Bluescreen to every client with a bare loopback entry, and
+with no allowlist under `php -S`; list `secret@127.0.0.1` and send the cookie
+there too. On `v0.14.1` the no-allowlist case held under every SAPI, and on
+`v0.14.0` any allowlist also admitted loopback.
 
 The secret is a credential: keep it in the environment or an uncommitted
 `.env`, never in git. Each entry is an exact address or `secret@address`; an
@@ -798,9 +801,11 @@ with `from()`, ISO date strings (`YYYY-MM-DD`, optional time, fraction and
 offset, as PostgreSQL renders them under the default ISO `DateStyle`; relative
 formats, `infinity`, BC dates, years over 4 digits and named time zones are
 refused) into `DateTimeImmutable`/`DateTime` and nested `Entity` properties
-(from a JSON object column), throws on a value it cannot hydrate, and
+(from a JSON object column), throws on a value it cannot hydrate *(dev)*, and
 `json_encode()` skips unassigned properties and those marked `#[JsonIgnore]`.
-A nullable column needs a nullable property (gotcha 31). Pagination, sorting
+On `v0.14.1` a date property stayed unset and most values it could not hydrate
+were skipped without an error. A nullable column needs a nullable property
+(gotcha 31). Pagination, sorting
 and filtering from request input: `references/database.md`. Keep money exact
 before it reaches an entity (gotcha 23):
 
@@ -1331,7 +1336,9 @@ out: InvalidArgumentException: Debug client allowlist entry 1 is a range: Tracy 
 in:  withDebugClientAllowlist(['secret@10.0.0.5 other@10.0.0.6'])
 out: InvalidArgumentException: Debug client allowlist entry 1 holds whitespace or a comma: pass each address as its own array entry.
 in:  withDebugClientAllowlist('') or withDebugClientAllowlist(null)
-out: accepted: Tracy shows to loopback clients only
+out: accepted: Tracy shows to loopback clients only, under php -S (dev); on v0.14.1 under every SAPI
+in:  no allowlist, GET / from 127.0.0.1 with no forwarded header, under FPM, CGI or Apache
+out: no Tracy bar: list 127.0.0.1 (dev)   (v0.14.1: the bar)
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
 out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
 in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 127.0.0.1 with no forwarded header
