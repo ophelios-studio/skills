@@ -834,6 +834,15 @@ own handler, which prints the message, server paths and trace whenever
 `withProductionDebugAcknowledged()` *(0.14)* if you use it (in a production-like
 environment it is `true` only then).
 
+After `build()`, `App::isDebug()` returns that same effective flag, anywhere in the
+application (`false` before `build()` and after `App::reset()`). The framework's own
+debug warnings (session idle timeout and strict mode, CSP) read it, so a production
+boot that refused `debug: true` writes none. A `SecureHeadersMiddleware` `csp` that
+replaces the policy of an outer `ContentSecurityPolicyMiddleware`, static or nonced,
+raises an `E_USER_WARNING` in debug. Debug output under a long-running HTTP server on
+the `cli` SAPI (RoadRunner, Swoole, ReactPHP) is not supported: the `cli` SAPI is
+treated as the command line, so errors reach every client.
+
 With `debug: true` and no handler, a controller exception shows the Bluescreen
 to a client Tracy renders for; any other client gets the generic 500 and the
 exception goes to the error log *(0.14.1)*. On `v0.14.0`, `debug: true` alone shows
