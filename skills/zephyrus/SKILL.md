@@ -837,7 +837,8 @@ environment it is `true` only then).
 After `build()`, `App::isDebug()` returns that same effective flag, anywhere in the
 application (`false` before `build()` and after `App::reset()`). The framework's own
 debug warnings (session idle timeout and strict mode, CSP) read it, so a production
-boot that refused `debug: true` writes none. A `SecureHeadersMiddleware` `csp` that
+boot that refused `debug: true` writes none. A bootstrap that sets the configuration
+without `build()` (a CLI script, a test) calls `App::setDebug(true)` to get them. A `SecureHeadersMiddleware` `csp` that
 replaces the policy of an outer `ContentSecurityPolicyMiddleware`, static or nonced,
 raises an `E_USER_WARNING` in debug. Debug output under a long-running HTTP server on
 the `cli` SAPI (RoadRunner, Swoole, ReactPHP) is not supported: the `cli` SAPI is
