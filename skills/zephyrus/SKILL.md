@@ -839,11 +839,12 @@ After `build()`, `App::isDebug()` returns that same effective flag, anywhere in 
 application (`false` before `build()` and after `App::reset()`). The framework's own
 debug warnings (session idle timeout and strict mode, CSP) read it, so a production
 boot that refused `debug: true` writes none. A bootstrap that sets the configuration
-without `build()` (a CLI script, a test) calls `App::setDebug(true)` to get them. A `SecureHeadersMiddleware` `csp` that
-replaces the policy of an outer `ContentSecurityPolicyMiddleware`, static or nonced,
-raises an `E_USER_WARNING` in debug. Debug output under a long-running HTTP server on
-the `cli` SAPI (RoadRunner, Swoole, ReactPHP) is not supported: the `cli` SAPI is
-treated as the command line, so errors reach every client.
+without `build()` (a CLI script, a test) calls `App::setDebug(true)` to get them. A
+`SecureHeadersMiddleware` `csp` that replaces the policy of an outer
+`ContentSecurityPolicyMiddleware`, static or nonced, raises an `E_USER_WARNING`
+in debug. Debug output under a long-running HTTP server on the `cli` SAPI (RoadRunner,
+Swoole, ReactPHP) is not supported: the `cli` SAPI is treated as the command line, so
+errors reach every client.
 
 With `debug: true` and no handler, a controller exception shows the Bluescreen
 to a client Tracy renders for; any other client gets the generic 500 and the
@@ -1655,7 +1656,7 @@ e.g. `bin2hex(random_bytes(16))`.
 ```text
 in:  withDebugClientAllowlist('@172.17.0.1')   (also DebugIntegration::initialize())
 out: InvalidArgumentException: Debug client allowlist entry 1 has an empty secret before "@": with no tracy-debug cookie it would admit every client at that address. Set a secret, or list the bare address if that is intended.
-in:  withDebugClientAllowlist('secret@10.0.0.5')
+in:  withDebugClientAllowlist('short@10.0.0.5')
 out: InvalidArgumentException: Debug client allowlist entry 1 has a secret shorter than 16 characters before "@": the tracy-debug cookie is all that guards the debugger at that address. Use a longer random secret.
 in:  withDebugClientAllowlist($secret . '@')
 out: InvalidArgumentException: Debug client allowlist entry 1 has no address after "@".
@@ -1792,7 +1793,7 @@ out: DatabaseException: Database refuses a persistent PDO, whose session would c
 | Controller factory | `withControllerFactory(fn (string $class): object => new $class($deps))` |
 | Report errors | `withEventDispatcher($events)` + `ExceptionEvent` listener |
 | Custom error page | `withExceptionHandler(RouteNotFoundException::class, fn ($e, Request $r) => ...)` |
-| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` *(0.14)* with `DEBUG_CLIENTS=<secret>@<gateway-ip>` (a random string of 16 characters or more) + the same `tracy-debug` cookie |
+| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` *(0.14)* with `DEBUG_CLIENTS=<secret>@<gateway-ip>` (`<secret>` from `bin2hex(random_bytes(16))`, 16 characters or more) + the same `tracy-debug` cookie |
 | Route | `#[Get('/x/{id}', constraints: ['id' => '\d+'], middlewares: ['auth'], name: 'x.show')]` |
 | URL for a route | `route('x.show', ['id' => 1])` |
 | Per-process routes | `#[RequiresEnv('MODE', 'api')]` on a base controller |
