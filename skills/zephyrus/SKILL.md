@@ -882,6 +882,14 @@ with no allowlist under `php -S`; list `secret@127.0.0.1` and send the cookie
 there too. On `v0.14.1` the no-allowlist case held under every SAPI, and on
 `v0.14.0` any allowlist also admitted loopback.
 
+A developer the debugger does not admit gets the production 500 page. With debug
+on, the error log line of that 500 says why: `Zephyrus: unhandled exception,
+answered with a 500 (the debugger did not admit <REMOTE_ADDR>; add it, or
+secret@<REMOTE_ADDR>, to withDebugClientAllowlist()): ...`, or, with no allowlist,
+`(the debugger admits no client without an allowlist, except a direct loopback
+client under php -S; ...)`. The line is unchanged when debug is off or the client
+is admitted.
+
 The secret is a credential: keep it in the environment or an uncommitted
 `.env`, never in git. Each entry is an exact address or `secret@address`; an
 empty secret, an empty address or a range is refused (gotcha 30). In
