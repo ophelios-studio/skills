@@ -906,6 +906,19 @@ empty or shorter secret, an empty address or a range is refused (gotcha 30). In
 `production` and `staging`, debug is forced off (gotcha 9) unless you call
 `withProductionDebugAcknowledged()`.
 
+Once `build()` enables Tracy, `dump()` and the debug bar mask the exact names in
+`DebugIntegration::SENSITIVE_KEYS`, the session cookie name, and the secrets of config
+sections. The Bluescreen masks them too, plus every value except null, bool, int and float
+under a name matching `SENSITIVE_KEY_PATTERN`, which `isSensitiveKey()` also tests. To hide
+any other name, add it to `Debugger::$keysToHide` (dump and debug bar) and to
+`Debugger::getBlueScreen()->keysToHide` (Bluescreen). The returning form
+`Debugger::dump($value, true)` masks no name; only the exporters apply there. For the same
+masking without enabling Tracy (a test, a controlled `dump()`), call
+`DebugIntegration::installSecretMasking($sessionName)` *(0.17)*, then
+`Dumper::toText($value, [Dumper::KEYS_TO_HIDE => Debugger::$keysToHide])`. Register your
+own exporter for a config section, closure, array iterator, array object or PHPMailer
+after that call, or it is replaced.
+
 ## Database
 
 ```php
