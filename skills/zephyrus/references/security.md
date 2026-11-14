@@ -36,7 +36,19 @@ $builder = ApplicationBuilder::create()
   whose csp is set, so the policy registered first is never sent. ...`
 - A nonce makes browsers ignore `'unsafe-inline'` in the same directive.
 - `reportOnly: true` sends `Content-Security-Policy-Report-Only`. A route that
-  sets its own CSP header keeps it.
+  sets its own CSP header keeps it, with no warning: the route chose.
+- *(dev)* A `SecureHeadersMiddleware` mounted on a route, inside a nonced
+  middleware, writes its `csp` first and replaces the nonce policy of that
+  request (`build()` cannot see per-route stacks). In debug mode that middleware
+  warns: `Content-Security-Policy: the csp of this SecureHeadersMiddleware
+  replaces the nonce policy of this request, because it is registered after
+  (inside) ContentSecurityPolicyMiddleware. Leave its csp empty, or, when both
+  are registered at the same level (global, group or route), register it before
+  ContentSecurityPolicyMiddleware.` A nonced report-only policy is never
+  replaced, so it raises nothing.
+- *(dev)* `nonce()` only means something under a nonced middleware. Without one
+  the value is in no header, and in a persistent worker (unsupported) it would
+  be the previous request's.
 
 ## Encryption
 
