@@ -607,7 +607,8 @@ SameSite=Lax`, percent-encodes the value as `setcookie()` does, replaces an
 earlier cookie of the same name, domain and path (the domain compared without
 case or a leading dot; the same name on another domain or path is kept as its
 own line, and so is a constructor line without `Path=`, which browsers scope to
-the request's directory), and refuses what browsers would drop.
+the request's directory, or one marked `Partitioned`, which browsers store
+apart), and refuses what browsers would drop.
 `Secure` is on by default even where `session.secure` is `auto`: pass it from the
 request, as below. `hasHeader('Set-Cookie')` is true when only cookies exist,
 and `withoutHeader('Set-Cookie')` also clears the cookies of `withCookie()` and
