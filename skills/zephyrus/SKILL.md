@@ -868,34 +868,39 @@ under every SAPI. Behind Docker the browser arrives from the bridge gateway, so 
 with a secret and send that secret in a `tracy-debug` cookie:
 
 ```php
-// DEBUG_CLIENTS holds "secret@172.17.0.1"; unset or empty leaves loopback only, under php -S.
+// DEBUG_CLIENTS holds "<secret>@172.17.0.1", <secret> from bin2hex(random_bytes(16));
+// unset or empty leaves loopback only, under php -S.
 $builder = $builder->withDebugClientAllowlist(env('DEBUG_CLIENTS'));
 ```
 
 A declared allowlist admits only its entries, so list loopback too if you want
 it *(0.14.1)*. A bare loopback entry (`127.0.0.1`, `::1`) admits no request that
 carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP`: behind a proxy on the same
-host, list `secret@127.0.0.1` and send the cookie *(0.14.1)*. A proxy on the same
+host, list `<secret>@127.0.0.1` and send the cookie *(0.14.1)*. A proxy on the same
 host that adds none of those headers (a bare nginx `proxy_pass`, socat, a TLS
 tunnel) shows the Bluescreen to every client with a bare loopback entry, and
-with no allowlist under `php -S`; list `secret@127.0.0.1` and send the cookie
+with no allowlist under `php -S`; list `<secret>@127.0.0.1` and send the cookie
 there too. On `v0.14.1` the no-allowlist case held under every SAPI, and on
 `v0.14.0` any allowlist also admitted loopback.
 
 A developer the debugger does not admit gets the production 500 page. With debug
 on, the error log line of that 500 says why: `Zephyrus: unhandled exception,
-answered with a 500 (the debugger did not admit <REMOTE_ADDR>; add it, or
-secret@<REMOTE_ADDR>, to withDebugClientAllowlist()): ...`, or, when the request
-carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP`, `(the debugger did not admit
-<REMOTE_ADDR>, which forwarded the request; add secret@<REMOTE_ADDR> to
-withDebugClientAllowlist() and send the tracy-debug cookie)`, or, with no allowlist,
-`(the debugger admits no client without an allowlist, except a direct loopback
-client under php -S; ...)`. The line is unchanged when debug is off or the client
+answered with a 500 (the debugger did not admit <addr>; add <secret>@<addr> to
+withDebugClientAllowlist() and send <secret> as the tracy-debug cookie, or add <addr>
+alone if it is your own machine): ...`, or, when the request carries
+`X-Forwarded-For`, `Forwarded` or `X-Real-IP`, `(the debugger did not admit <addr>,
+which forwarded the request; add <secret>@<addr> to withDebugClientAllowlist() and send
+<secret> as the tracy-debug cookie)`, or, when `REMOTE_ADDR` is missing or not an IP
+address, `(the debugger did not admit this client: REMOTE_ADDR is missing or not an IP
+address)`, or, with no allowlist, `(the debugger admits no client without an allowlist,
+except a direct loopback client under php -S; ...)`. `<secret>` is written literally:
+never paste it. The line is unchanged when debug is off or the client
 is admitted.
 
 The secret is a credential: keep it in the environment or an uncommitted
-`.env`, never in git. Each entry is an exact address or `secret@address`; an
-empty secret, an empty address or a range is refused (gotcha 30). In
+`.env`, never in git. Each entry is an exact address or `secret@address`; the secret
+is a random string of at least 16 characters (`bin2hex(random_bytes(16))`), and an
+empty or shorter secret, an empty address or a range is refused (gotcha 30). In
 `production` and `staging`, debug is forced off (gotcha 9) unless you call
 `withProductionDebugAcknowledged()`.
 
@@ -1638,27 +1643,30 @@ out: MailerException, failure = send_failed, getMessage() = "The mail transport 
 ```
 
 **30. The debug allowlist refuses entries that would need no cookie.** The
-messages name the entry's position, never its secret.
+messages name the entry's position, never its secret. `$secret` stands for 16 or more random characters,
+e.g. `bin2hex(random_bytes(16))`.
 
 ```text
 in:  withDebugClientAllowlist('@172.17.0.1')   (also DebugIntegration::initialize())
 out: InvalidArgumentException: Debug client allowlist entry 1 has an empty secret before "@": with no tracy-debug cookie it would admit every client at that address. Set a secret, or list the bare address if that is intended.
-in:  withDebugClientAllowlist('secret@')
+in:  withDebugClientAllowlist('secret@10.0.0.5')
+out: InvalidArgumentException: Debug client allowlist entry 1 has a secret shorter than 16 characters before "@": the tracy-debug cookie is all that guards the debugger at that address. Use a longer random secret.
+in:  withDebugClientAllowlist($secret . '@')
 out: InvalidArgumentException: Debug client allowlist entry 1 has no address after "@".
 in:  withDebugClientAllowlist('10.0.0.0/8')
 out: InvalidArgumentException: Debug client allowlist entry 1 is a range: Tracy matches exact addresses only, so list each address.
-in:  withDebugClientAllowlist(['secret@10.0.0.5 other@10.0.0.6'])
+in:  withDebugClientAllowlist(["$secret@10.0.0.5 $secret@10.0.0.6"])
 out: InvalidArgumentException: Debug client allowlist entry 1 holds whitespace or a comma: pass each address as its own array entry.
 in:  withDebugClientAllowlist('') or withDebugClientAllowlist(null)
 out: accepted: Tracy shows to loopback clients only, under php -S (0.15); on v0.14.1 under every SAPI
 in:  no allowlist, GET / from 127.0.0.1 with no forwarded header, under FPM, CGI or Apache
 out: no Tracy bar: list 127.0.0.1 (0.15)   (v0.14.1: the bar)
-in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 10.0.0.169
-out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=secret
-in:  DEBUG_CLIENTS=secret@10.0.0.169, GET / from 127.0.0.1 with no forwarded header
+in:  DEBUG_CLIENTS=<secret>@10.0.0.169, GET / from 10.0.0.169
+out: no Tracy bar without the cookie or with tracy-debug=wrong; the bar with tracy-debug=<secret>
+in:  DEBUG_CLIENTS=<secret>@10.0.0.169, GET / from 127.0.0.1 with no forwarded header
 out: no Tracy bar: loopback is not on the list (0.14.1)   (v0.14.0: the bar)
 in:  DEBUG_CLIENTS=127.0.0.1, GET / from 127.0.0.1 with X-Forwarded-For or X-Real-IP (a proxy on the same host)
-out: no Tracy bar: a bare loopback entry admits no forwarded request; list secret@127.0.0.1 and send tracy-debug=secret (0.14.1)   (v0.14.0: the bar)
+out: no Tracy bar: a bare loopback entry admits no forwarded request; list <secret>@127.0.0.1 and send tracy-debug=<secret> (0.14.1)   (v0.14.0: the bar)
 ```
 
 **31. A NULL column into a non-nullable property is a `TypeError`.** Declare
@@ -1778,7 +1786,7 @@ out: DatabaseException: Database refuses a persistent PDO, whose session would c
 | Controller factory | `withControllerFactory(fn (string $class): object => new $class($deps))` |
 | Report errors | `withEventDispatcher($events)` + `ExceptionEvent` listener |
 | Custom error page | `withExceptionHandler(RouteNotFoundException::class, fn ($e, Request $r) => ...)` |
-| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` *(0.14)* with `DEBUG_CLIENTS=secret@<gateway-ip>` + `tracy-debug=secret` cookie |
+| Debug behind Docker | `withDebugClientAllowlist(env('DEBUG_CLIENTS'))` *(0.14)* with `DEBUG_CLIENTS=<secret>@<gateway-ip>` (a random string of 16 characters or more) + the same `tracy-debug` cookie |
 | Route | `#[Get('/x/{id}', constraints: ['id' => '\d+'], middlewares: ['auth'], name: 'x.show')]` |
 | URL for a route | `route('x.show', ['id' => 1])` |
 | Per-process routes | `#[RequiresEnv('MODE', 'api')]` on a base controller |
