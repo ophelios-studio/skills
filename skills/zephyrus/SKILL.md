@@ -1254,25 +1254,29 @@ USER www-data
   `No router: section in <file>, so no routes cache was written` when there is
   none. Exit codes: 0 written, 1 refused (message on stderr), 2 usage error.
   Before anything is written it checks every configuration and its `router:`
-  section, the process owner, and that a file already at a cache path carries
-  the warm header; the directory guards (mode, owner, link) and the
-  regular-file check run when each file is written, so a refused directory can
-  leave the caches written before it (valid, `.gitignore` included). A file at a cache path that the
-  warm did not write is never replaced or deleted: `Cannot write the boot cache
-  <path>: the file there was not written by vendor/bin/zephyrus cache:warm, so
-  it is left in place.`
+  section, the process owner, the directory guards (mode, owner, link), the
+  regular-file check, and that a file already at a cache path carries the warm
+  header, so a refusal in a later `--config` leaves the earlier caches unwritten.
+  A file at a cache path that the warm did not write is never replaced or
+  deleted: `Cannot write the boot cache <path>: the file there was not written
+  by vendor/bin/zephyrus cache:warm, so it is left in place.`
+- Two caches at one path are refused before anything is written, as when
+  `router.cache` is `var/zephyrus/config.yml.php`: `Two caches would be written
+  to <path>: give router.cache another path.` (exit 1).
 - `vendor/bin/zephyrus cache:clear` deletes both files and exits 0 when they
-  are already gone: run it on a local staging that was warmed.
-  It checks the header only when it deletes, so it can remove the caches of a
-  first configuration before refusing a foreign file in the next.
-- Limits: `cache:warm` does not warm `router:` from a `config.yml` that is a
-  symbolic link: it resolves the directories from the link target. When the
-  target is itself named `config.yml` it refuses with a directory-not-found
-  message; when it has another name (`config.yml -> other/real.yml`) it refuses
-  with `Configuration file real.yml declares router:, but router: is cached only
-  from config.yml at the application root: move the router: section to that
-  file.` (exit 1). Either way the boot discovers the routes and logs
-  `no routes cache`. `withConfigurationFile()`
+  are already gone: run it on a local staging that was warmed. It checks every
+  file for the warm header before it deletes the first, so a foreign file in a
+  later `--config` keeps the earlier caches.
+- The root is the real path of the directory of the file given, so a
+  `config.yml` that is a symbolic link is cached under the directory of the
+  link (`var/zephyrus/config.yml.php` and `routes.php` beside the link), where
+  the application reads them, as `fromConfigurationFile()` takes the directory
+  of the link for its `basePath`. `router:` is cached only from a `config.yml`
+  at that root: from a file in a sub-directory (`--config=config/config.yml`)
+  the relative paths resolve against that sub-directory, and a refusal such as
+  `... is not a directory.` ends with `Note that router: is cached only from
+  config.yml at the application root, and its paths were resolved against
+  <root>/config.` `withConfigurationFile()`
   then `build()`, and `buildFromConfigurationFiles([...])`, still refuse a
   `router:` section for lack of a `basePath`, with the fix in the message; only
   `fromConfigurationFile()` and `buildFromConfigurationFile()` take the
