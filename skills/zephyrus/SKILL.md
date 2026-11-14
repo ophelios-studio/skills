@@ -300,6 +300,18 @@ A section of your own does not refuse unknown keys: a misspelled key there
 silently takes the default. `render:` and `mailer:` do refuse them *(0.15)*
 (`v0.14.1` ignored them: `render: { engin: php }` kept `latte`).
 
+A section of your own names itself by its class in a type refusal (`Configuration
+section 'App\BillingConfig' field 'trialDays' has invalid value "abc": is not an
+integer.`) *(dev)*, since it does not know its key. Override `protected function
+sectionName(): string` to return `'billing'`: `mailer:` and `render:` already name
+themselves `'mailer'` and `'render'`, where `v0.16.0` named their classes.
+
+A YAML syntax error stops the boot with `Failed to parse configuration file
+[config.yml]: invalid YAML at line 3 (the parser's detail is withheld, since it
+can quote a secret from the file).` *(dev)*; `v0.16.0` appended the parser's
+message, which could quote a value of the file, and chained its exception.
+`getPrevious()` is null: the line is in the message.
+
 ### `router:` section *(0.16)*
 
 ```yaml
@@ -999,8 +1011,11 @@ Register `'mailer' => MailerConfig::class` (keys `smtp.host`, `smtp.port`,
 `from.name`), the complete list the section accepts *(0.15)*: any other key
 stops the boot (`mailer: { smtp: { prot: 25 } }` gives `Configuration section
 'mailer' field 'smtp.prot' is an unknown key: did you mean "smtp.port"?`),
-where `v0.14.1` kept the default. `smtp.port` is read as an integer, so
-`toArray()` returns `1025`, not `'1025'`, for `!env MAIL_PORT, 1025`.
+where `v0.14.1` kept the default. A dotted key written flat (`mailer: {
+smtp.host: h }`) gets `... field 'smtp.host' is written flat: nest it under
+'smtp', such as smtp: { host: ... }.` *(dev)*. `smtp.port` is read as an
+integer, so `toArray()` returns `1025`, not `'1025'`, for `!env MAIL_PORT, 1025`;
+a null port (an empty `!env`) exports `587` *(dev)*, where `v0.16.0` exported null.
 `smtp.encryption` takes `tls` (the default), `ssl`, or `''` for none;
 `encryption: none` stops the boot with `Configuration section 'mailer' field
 'smtp.encryption' has invalid value "none": must be one of 'tls', 'ssl' or ''
