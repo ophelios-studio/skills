@@ -48,10 +48,29 @@ try {
   case): `shell.php.png` fails with `Upload target name carries the executable
   extension "php" before its final extension.` That list is a minimum, not
   every extension a server may run. A name without an extension is kept as is.
-  A name with a colon, an ASCII control character, a leading dot, or a trailing dot or
-  space is refused. `allowedExtensions` applies in addition, to EVERY segment:
+  A name with a colon, a leading dot, or a trailing dot or space is refused. *(dev)* So is a
+  name with a control, format or line separator character (U+0085, U+2028, a zero width space,
+  the right-to-left override: `x\u{202E}exe.png` fails with `Invalid upload target filename:
+  "x\u202eexe.png".`), a name that is not valid UTF-8, and one whose part before the first dot
+  is a Windows device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9`,
+  `COM¹` to `LPT³`, `CONIN$`, `CONOUT$`, any case): `CONIN$.png` fails with `Invalid upload
+  target filename: "CONIN$.png".` (`CONSOLE.png` is fine; `nul.pdf` and `con.pdf` are refused
+  too, and spaces around the device part do not help: `" con.png"` fails with `Invalid upload
+  target filename: " con.png".`). A null byte is refused, not stripped. The sub-directory gets the same checks, one
+  segment at a time (the colon included): `store($file, "a\0b")` fails with `Invalid upload
+  sub-directory segment: "a\u0000b".`, and `con` or `NUL` with `Invalid upload sub-directory
+  segment: "con".`, and a segment that ends with a dot (`a.`, `...`) with `Invalid upload
+  sub-directory segment: "a.".` (`node.js` and `v1.2` are fine; `Path traversal attempt
+  detected` stays for `..`). On `v0.16.0` the null
+  byte is removed and the rest is judged, and the other names pass. A name chosen by a user:
+  leave `$targetName` out so the name is generated. `allowedExtensions` applies in addition, to EVERY segment:
   `report.v2.pdf` needs `v2` in the list. Never pass the client's file name
   unchecked. An existing file is only replaced with `overwriteExisting: true`.
+- Serve every stored file with `X-Content-Type-Options: nosniff` and an explicit
+  `Content-Type`: a `.md` or `.txt` file holding HTML is sniffed as `text/plain`, stored,
+  and a browser may render it as HTML when no type is sent. The same holds for an `Uploader`
+  that accepts `text/html`: the file is stored without an extension, so the explicit
+  `Content-Type` and `nosniff` are the only thing keeping it from being rendered.
 - To accept SVG, HTML or XML, declare the type in `$mimeExtensionMap`, never
   through `allowedExtensions` (which only lets the client's extension pass).
   Serve the result with `Content-Disposition: attachment` or a strict CSP
