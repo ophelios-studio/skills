@@ -138,6 +138,9 @@ values it could not hydrate were skipped without an error.
   already set it. Leave it unset in the constructor, or drop readonly.`, and for
   a `private(set)` one: `Cannot hydrate property $id of <Entity>: its
   private(set) visibility keeps Entity from writing it. Use protected(set)
-  instead.`
-- `json_encode($entity)` skips properties the row did not set and properties
-  marked `#[JsonIgnore]` (password hashes, internal ids).
+  instead.` A virtual property with no set hook is refused the same way:
+  `Cannot hydrate property $id of <Entity>: it is virtual with no set hook.
+  Alias the column in the query, or give the property a set hook.`
+- `json_encode($entity)` skips properties the row did not set, properties
+  marked `#[JsonIgnore]` (password hashes, internal ids) and virtual properties
+  with no get hook.
