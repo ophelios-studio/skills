@@ -311,7 +311,8 @@ A YAML syntax error stops the boot with `Failed to parse configuration file
 can quote a secret from the file).` *(dev)*; `v0.16.0` appended the parser's
 message, which could quote a value of the file, and chained its exception.
 `getPrevious()` is null and no exception or file text is left in the trace's
-arguments *(dev)*: the line is in the message.
+arguments *(dev)*: the line is in the message. An unreadable file says
+`Configuration file is not readable: config.yml` *(dev)*.
 
 ### `router:` section *(0.16)*
 
@@ -1400,8 +1401,9 @@ out: false
 
 **11. `!env` never reads `$_SERVER`, and refuses request-controlled names.** A
 value set with Apache `SetEnv` or `fastcgi_param` is invisible: set it in the
-process environment (container env, php-fpm `env[NAME]`) or `.env`. A refused
-name is never quoted *(dev)*: the message gives the tag's key and the reason.
+process environment (container env, php-fpm `env[NAME]`) or `.env`. The
+message of a refused name gives the tag's key and the reason, never the name,
+and the loader's trace arguments are `SensitiveParameterValue` *(dev)*.
 
 ```text
 in:  $_SERVER['APP_ENV'] = 'dev' only; environment: !env APP_ENV, prod
