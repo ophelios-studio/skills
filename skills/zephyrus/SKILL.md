@@ -18,6 +18,8 @@ Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
 passage says what `v0.14.1` does instead. Behaviour marked *(0.16)* arrived in
 `v0.16.0`; the same passage says what `v0.15.0` does instead when it changed
 behaviour (the `router:` section and `cache:warm` are new API).
+Behaviour marked *(dev)* is on the `dev` branch, unreleased since `v0.16.0`; the
+same passage says what `v0.16.0` does instead.
 The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
@@ -869,6 +871,37 @@ built by `fromConfig()` go out as unnamed statements, bound by the server *(0.15
 protocol close under libpq 17)); a `new Database($pdo)` keeps named statements. See
 `references/database.md`.
 
+Persistent connections *(dev)*: `persistent: true` in the `database` section (a
+boolean, `false` by default; `persistent: !env DB_PERSISTENT, false` works) keeps one
+connection per PHP process and reuses it on the next `fromConfig()`: about 0.3 ms instead
+of 18 ms for a new connection, measured locally with SCRAM. Every reuse first sends
+`ROLLBACK` when a transaction is open, then `DISCARD ALL`, before any other statement,
+and sets the PDO attributes back (exceptions, natural case and nulls, no stringified
+fetches, objects). Settings (`set_config(..., false)`, `SET`, `search_path`, `SET ROLE`),
+session advisory locks, temporary tables, `LISTEN`, prepared statements, held cursors and
+`currval()` never reach the next request; the app resets nothing itself. One trace stays:
+a custom variable the previous holder set reads `''`, not `NULL`, so a row level
+security policy reads `nullif(current_setting('app.actor', true), '')`.
+
+- While a `Database` from a persistent `fromConfig()` is alive, another `fromConfig()`
+  with the same connection settings and user opens a non-persistent connection (another
+  backend, the full connection cost), so a live session is never reset under its
+  holder: share one `Database` per request.
+- A backend the server ended shows up at the reset: `fromConfig()` drops it and retries
+  once on a new connection. A second failure throws a `DatabaseException`,
+  `Persistent connection reset failed after one retry [SQLSTATE ...]: driver detail
+  withheld, read driverMessage() to inspect it`, instead of returning a `Database`.
+- Each process holds its connection as long as it lives: `max_connections` must cover
+  the Apache or PHP-FPM processes of every machine, plus CLI processes and other
+  clients. The CLI honours the setting as is.
+- A pooler in transaction mode (PgBouncer `pool_mode = transaction`) cannot carry an
+  actor set for the session with `set_config(..., false)`, persistent or not: the next
+  transaction may run on another server session.
+- Persistence goes through this setting only: a `$pdoFactory` that forces
+  `PDO::ATTR_PERSISTENT`, and `new Database($pdo)` with a persistent PDO, throw a
+  `DatabaseException` (gotcha 39). On `v0.16.0` both were accepted and the next request
+  inherited the session as it was.
+
 One SQL statement per `execute()`: `"INSERT ...; INSERT ..."` inserts nothing
 and throws a `DatabaseException` whose `getMessage()` is `Query failed [SQLSTATE
 42601]: statement and driver detail withheld, read sql() and driverMessage() to
@@ -1627,6 +1660,17 @@ in:  chmod 775 var; cache:warm
 out: cache:warm failed for <root>/config.yml: Cannot write the boot cache <root>/var/zephyrus/config.yml.php: <root>/var is writable by its group or by others: run chmod g-w,o-w <root>/var.
 ```
 
+**39. A persistent PDO built outside `persistent: true` is refused *(dev)*.**
+Remove `PDO::ATTR_PERSISTENT` from the factory or the PDO and set `persistent: true`
+in the `database` section. On `v0.16.0` both were accepted, without any reset.
+
+```text
+in:  Database::fromConfig($config->database, fn ($dsn, $user, $password, $options) => new PDO($dsn, $user, $password, [PDO::ATTR_PERSISTENT => true] + $options))
+out: DatabaseException: The PDO factory given to Database::fromConfig() returned a persistent connection it was not asked for, whose session would carry over from an earlier request: remove PDO::ATTR_PERSISTENT from the factory and set database.persistent: true in the configuration to reuse connections.
+in:  new Database(new PDO($dsn, $user, $password, [PDO::ATTR_PERSISTENT => true]))
+out: DatabaseException: Database refuses a persistent PDO, whose session would carry over from an earlier request: remove PDO::ATTR_PERSISTENT from the PDO and set database.persistent: true in the configuration, so Database::fromConfig() resets the session each time it reuses the connection.
+```
+
 ## Cheat sheet
 
 | Need | Write |
@@ -1655,6 +1699,7 @@ out: cache:warm failed for <root>/config.yml: Cannot write the boot cache <root>
 | Validate | `(new FormValidator([...]))->validate($data)->hasErrors()` |
 | Insert with id | `insertRowGetId('INSERT ... RETURNING id', [...])` |
 | Exact money | `$db->registerTypeConversion('NUMERIC', fn (string $v): string => $v)` |
+| Reuse connections | `persistent: true` in `database:` *(dev)*; RLS reads `nullif(current_setting('app.actor', true), '')` |
 | Escape outside Latte | `e($value)` |
 | Own 413 page | `new MaxBodySizeMiddleware($max, onFailure: fn (Request $r, BodyTooLarge $b): ?Response => ...)` |
 | 404 for a missing record | `return $this->abort(404)` or `throw new RouteNotFoundException('project')` |
