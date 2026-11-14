@@ -647,9 +647,20 @@ yours as the second argument if your bootstrap set a custom one). On sign-out,
 `$session->destroy()`, which throws `SessionException` when the store refuses.
 
 To keep sessions in PostgreSQL, register `DatabaseSessionHandler` after
-`new SessionManager()` and before `build()`:
-`$session->setHandler(new DatabaseSessionHandler(fn (): Database => Database::fromConfig($config->database)))`.
-It writes to `public.session` by default (the class docblock gives the
+`new SessionManager()` and before `build()`, with an accessor the app shares, so a
+request opens one `Database`:
+
+```php
+$shared = null;
+$database = function () use (&$shared, $config): Database {
+    return $shared ??= Database::fromConfig($config->database);
+};
+$session->setHandler(new DatabaseSessionHandler($database)); // the app calls $database() too
+```
+
+A handler given its own `fn (): Database => Database::fromConfig($config->database)`
+opens a second connection, which `persistent: true` cannot reuse while the app's is held:
+a new connection on every request (about 18 ms), without a sign. It writes to `public.session` by default (the class docblock gives the
 `CREATE TABLE`): `$session->set('user_id', 7)` stores one row with `data`
 `user_id|i:7;`. Behind PgBouncer transaction pooling, pass `lockSessions: false`.
 Requests of one session wait for each other (PostgreSQL only, at most five
@@ -874,19 +885,34 @@ protocol close under libpq 17)); a `new Database($pdo)` keeps named statements. 
 Persistent connections *(dev)*: `persistent: true` in the `database` section (a
 boolean, `false` by default; `persistent: !env DB_PERSISTENT, false` works) keeps one
 connection per PHP process and reuses it on the next `fromConfig()`: about 0.3 ms instead
-of 18 ms for a new connection, measured locally with SCRAM. Every reuse first sends
-`ROLLBACK` when a transaction is open, then `DISCARD ALL`, before any other statement,
-and sets the PDO attributes back (exceptions, natural case and nulls, no stringified
-fetches, objects). Settings (`set_config(..., false)`, `SET`, `search_path`, `SET ROLE`),
-session advisory locks, temporary tables, `LISTEN`, prepared statements, held cursors and
-`currval()` never reach the next request; the app resets nothing itself. One trace stays:
+of 18 ms for a new connection, measured locally with SCRAM. Each time `fromConfig()`
+takes it from the pool, it sends `ROLLBACK` when a transaction is open, then
+`DISCARD ALL`, drops the notifications the client already received, and sets the PDO
+attributes back (exceptions, natural case and nulls, no stringified fetches, objects),
+all before it returns. Settings (`set_config(..., false)`, `SET`, `search_path`,
+`SET ROLE`), session advisory locks, temporary tables, `LISTEN` and the notifications it
+brought, prepared statements, held cursors and `currval()` never reach the next request;
+the app resets nothing itself. One trace stays:
 a custom variable the previous holder set reads `''`, not `NULL`, so a row level
 security policy reads `nullif(current_setting('app.actor', true), '')`.
 
 - While a `Database` from a persistent `fromConfig()` is alive, another `fromConfig()`
   with the same connection settings and user opens a non-persistent connection (another
   backend, the full connection cost), so a live session is never reset under its
-  holder: share one `Database` per request.
+  holder: share one `Database` per request, the session handler's included (see the
+  accessor under Sessions).
+- The `$pdoFactory` sets no session state: with `persistent: true` it runs before the
+  reset, which erases it. A `SET ROLE` in the factory is lost without a sign
+  (`current_user` is the login role again), while it holds with `persistent: false`.
+  Set session state after `fromConfig()` returns.
+- A session advisory lock left held stays held until the next `fromConfig()` of the same
+  process, not until the request ends; meanwhile another process asking for it waits (the
+  session handler gives up after five seconds). Release a session lock in a `finally`.
+- Never call `Pdo\Pgsql::setNoticeCallback()` on a persistent connection: the callback
+  outlives the request, and on PHP 8.4.27 the next request's notice crashed the process.
+- Do not fork once a persistent `fromConfig()` has run in the process: the child opens a
+  connection of its own (the pool is keyed by process id), but it inherits the parent's
+  socket and closes the parent's connection when it exits.
 - A backend the server ended shows up at the reset: `fromConfig()` drops it and retries
   once on a new connection. A second failure throws a `DatabaseException`,
   `Persistent connection reset failed after one retry [SQLSTATE ...]: driver detail
@@ -1662,7 +1688,11 @@ out: cache:warm failed for <root>/config.yml: Cannot write the boot cache <root>
 
 **39. A persistent PDO built outside `persistent: true` is refused *(dev)*.**
 Remove `PDO::ATTR_PERSISTENT` from the factory or the PDO and set `persistent: true`
-in the `database` section. On `v0.16.0` both were accepted, without any reset.
+in the `database` section, in the same change. A factory that still forces it beside
+`persistent: true` is accepted, but draws from PDO's default pool rather than this
+process's `zephyrus:<pid>` one, and is refused as soon as a second `fromConfig()` runs
+while the first `Database` is held (tests, scripts), since that one asks for a
+non-persistent connection. On `v0.16.0` both were accepted, without any reset.
 
 ```text
 in:  Database::fromConfig($config->database, fn ($dsn, $user, $password, $options) => new PDO($dsn, $user, $password, [PDO::ATTR_PERSISTENT => true] + $options))
