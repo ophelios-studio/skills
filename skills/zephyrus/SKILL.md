@@ -885,7 +885,10 @@ there too. On `v0.14.1` the no-allowlist case held under every SAPI, and on
 A developer the debugger does not admit gets the production 500 page. With debug
 on, the error log line of that 500 says why: `Zephyrus: unhandled exception,
 answered with a 500 (the debugger did not admit <REMOTE_ADDR>; add it, or
-secret@<REMOTE_ADDR>, to withDebugClientAllowlist()): ...`, or, with no allowlist,
+secret@<REMOTE_ADDR>, to withDebugClientAllowlist()): ...`, or, when the request
+carries `X-Forwarded-For`, `Forwarded` or `X-Real-IP`, `(the debugger did not admit
+<REMOTE_ADDR>, which forwarded the request; add secret@<REMOTE_ADDR> to
+withDebugClientAllowlist() and send the tracy-debug cookie)`, or, with no allowlist,
 `(the debugger admits no client without an allowlist, except a direct loopback
 client under php -S; ...)`. The line is unchanged when debug is off or the client
 is admitted.
