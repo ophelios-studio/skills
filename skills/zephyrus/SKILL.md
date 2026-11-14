@@ -900,7 +900,7 @@ never paste it. The line is unchanged when debug is off or the client
 is admitted.
 
 The secret is a credential: keep it in the environment or an uncommitted
-`.env`, never in git. Each entry is an exact address or `secret@address`; the secret
+`.env`, never in git. Each entry is an exact address or `<secret>@address`; the secret
 is a random string of at least 16 characters (`bin2hex(random_bytes(16))`), and an
 empty or shorter secret, an empty address or a range is refused (gotcha 30). In
 `production` and `staging`, debug is forced off (gotcha 9) unless you call
