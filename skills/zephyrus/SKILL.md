@@ -307,10 +307,11 @@ sectionName(): string` to return `'billing'`: `mailer:` and `render:` already na
 themselves `'mailer'` and `'render'`, where `v0.16.0` named their classes.
 
 A YAML syntax error stops the boot with `Failed to parse configuration file
-[config.yml]: invalid YAML at line 3 (the parser's detail is withheld, since it
+[config.yml]: invalid YAML near line 3 (the parser's detail is withheld, since it
 can quote a secret from the file).` *(dev)*; `v0.16.0` appended the parser's
 message, which could quote a value of the file, and chained its exception.
-`getPrevious()` is null: the line is in the message.
+`getPrevious()` is null and no exception or file text is left in the trace's
+arguments *(dev)*: the line is in the message.
 
 ### `router:` section *(0.16)*
 
@@ -1013,7 +1014,8 @@ stops the boot (`mailer: { smtp: { prot: 25 } }` gives `Configuration section
 'mailer' field 'smtp.prot' is an unknown key: did you mean "smtp.port"?`),
 where `v0.14.1` kept the default. A dotted key written flat (`mailer: {
 smtp.host: h }`) gets `... field 'smtp.host' is written flat: nest it under
-'smtp', such as smtp: { host: ... }.` *(dev)*. `smtp.port` is read as an
+'smtp', such as smtp: { host: ... }.` *(dev)* (`smtp.prot` gets `smtp: { port:
+... }`, the closest key). `smtp.port` is read as an
 integer, so `toArray()` returns `1025`, not `'1025'`, for `!env MAIL_PORT, 1025`;
 a null port (an empty `!env`) exports `587` *(dev)*, where `v0.16.0` exported null.
 `smtp.encryption` takes `tls` (the default), `ssl`, or `''` for none;
@@ -1398,13 +1400,14 @@ out: false
 
 **11. `!env` never reads `$_SERVER`, and refuses request-controlled names.** A
 value set with Apache `SetEnv` or `fastcgi_param` is invisible: set it in the
-process environment (container env, php-fpm `env[NAME]`) or `.env`.
+process environment (container env, php-fpm `env[NAME]`) or `.env`. A refused
+name is never quoted *(dev)*: the message gives the tag's key and the reason.
 
 ```text
 in:  $_SERVER['APP_ENV'] = 'dev' only; environment: !env APP_ENV, prod
 out: environment = Production
 in:  environment: !env HTTP_APP_ENV, dev
-out: ConfigurationException: !env tag at "application.environment": "HTTP_APP_ENV": names starting with HTTP_ can be set per request by the client request headers, so they are never read as configuration; rename the variable.
+out: ConfigurationException: !env tag at "application.environment": the variable name is refused: names starting with HTTP_ can be set per request by the client request headers, so they are never read as configuration; rename the variable.
 ```
 
 **12. Built-in sections are not read through `section()`.**
