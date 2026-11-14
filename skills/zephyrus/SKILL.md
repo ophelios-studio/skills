@@ -327,9 +327,10 @@ router:
 
 - Relative paths resolve against the `basePath` given to
   `withConfiguration()`, never the current directory;
-  `ApplicationBuilder::buildFromConfigurationFile($path)` takes the directory of
-  the file as `basePath` *(0.16)* (`v0.15.0` set none, so a relative
-  `localization.locale_path` resolved against the current directory). `cache` must be a `.php` file under that root:
+  the file entries of `ApplicationBuilder` (`buildFromConfigurationFile($path)`
+  since 0.16, the other file entries after it) take the directory of the file
+  (of the first one for several) as `basePath` (`v0.15.0` set none, so a
+  relative `localization.locale_path` resolved against the current directory). `cache` must be a `.php` file under that root:
   `cache: config.yml` is refused (`the routes cache is PHP, so its file name must
   end in .php`).
 - No value may carry a YAML tag, `!env` included: `cache:warm` reads the section
@@ -1276,11 +1277,12 @@ USER www-data
   the relative paths resolve against that sub-directory, and a refusal such as
   `... is not a directory.` ends with `Note that router: is cached only from
   config.yml at the application root, and its paths were resolved against
-  <root>/config.` `withConfigurationFile()`
-  then `build()`, and `buildFromConfigurationFiles([...])`, still refuse a
-  `router:` section for lack of a `basePath`, with the fix in the message; only
-  `fromConfigurationFile()` and `buildFromConfigurationFile()` take the
-  directory of the file.
+  <root>/config.` Every file entry of `ApplicationBuilder` (`withConfigurationFile()`,
+  `withConfigurationFiles()`, `fromConfigurationFiles()`, the optional and
+  `buildFrom...` variants) takes the real path of the directory of the file as
+  `basePath`, the first path when there are several (even if that file is
+  missing); a missing directory leaves it unset, and `build()` then refuses
+  `router:` with the fix in the message.
 - `--config=PATH` (repeatable) warms another file; a relative path is read from
   the current directory, and the default is the `config.yml` at the project
   root, from any directory. The routes cache is checked against
