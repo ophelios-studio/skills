@@ -1264,7 +1264,10 @@ USER www-data
   by vendor/bin/zephyrus cache:warm, so it is left in place.`
 - Two caches at one path are refused before anything is written, as when
   `router.cache` is `var/zephyrus/config.yml.php`: `Two caches would be written
-  to <path>: give router.cache another path.` (exit 1).
+  to <path>: give router.cache another path.` (exit 1). So is a cache under
+  another (`router.cache: var/zephyrus/config.yml.php/routes.php`): `The cache
+  <inner> would be written under the cache <outer>: give router.cache another
+  path.` The same `--config` given twice, in any spelling, is processed once.
 - `vendor/bin/zephyrus cache:clear` deletes both files and exits 0 when they
   are already gone: run it on a local staging that was warmed. It checks every
   file for the warm header before it deletes the first, so a foreign file in a
@@ -1281,9 +1284,9 @@ USER www-data
   <root>/config.` Every file entry of `ApplicationBuilder` (`withConfigurationFile()`,
   `withConfigurationFiles()`, `fromConfigurationFiles()`, the optional and
   `buildFrom...` variants) takes the real path of the directory of the file as
-  `basePath`, the first path when there are several (even if that file is
-  missing); a missing directory leaves it unset, and `build()` then refuses
-  `router:` with the fix in the message.
+  `basePath`, the first file that exists when there are several; when none
+  exists it stays unset, and `build()` then refuses `router:` with the fix in
+  the message.
 - `--config=PATH` (repeatable) warms another file; a relative path is read from
   the current directory, and the default is the `config.yml` at the project
   root, from any directory. The routes cache is checked against
