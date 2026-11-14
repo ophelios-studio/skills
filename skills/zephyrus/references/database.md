@@ -96,8 +96,8 @@ values it could not hydrate were skipped without an error.
   PHP arrays, JSON and JSONB decoded (objects as `stdClass`). `NUMERIC` becomes
   a float (gotcha 23), `bytea` a stream (gotcha 24).
 - `Entity::build()` casts each column to the declared property type; a column
-  without a matching public property is ignored, and `getRawData()` returns
-  the whole row.
+  without a matching non-private, non-static property is ignored, and
+  `getRawData()` returns the whole row.
 - A `null` value is assigned as is, so a non-nullable property throws a
   `TypeError` (gotcha 31). A backed enum property takes `Enum::from()`; a value
   outside the enum (or of the wrong type, such as `'1'` for an int-backed enum)
@@ -129,5 +129,15 @@ values it could not hydrate were skipped without an error.
   type, a union or an intersection. A `null` is not refused. Declare the
   column as `string` and convert it in a method, or assign the property after
   `build()` from a column the entity does not map.
+- *(dev)* Property forms: `build()` writes a non-private, non-static property,
+  an uninitialized `readonly` one (`public readonly int $id;`) and a
+  `protected(set)` one. It throws `InvalidArgumentException` for a `readonly`
+  property the constructor already set
+  (`public function __construct(public readonly int $id = 0)`):
+  `Cannot hydrate property $id of <Entity>: it is readonly and its constructor
+  already set it. Leave it unset in the constructor, or drop readonly.`, and for
+  a `private(set)` one: `Cannot hydrate property $id of <Entity>: its
+  private(set) visibility keeps Entity from writing it. Use protected(set)
+  instead.`
 - `json_encode($entity)` skips properties the row did not set and properties
   marked `#[JsonIgnore]` (password hashes, internal ids).
