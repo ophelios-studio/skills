@@ -392,7 +392,8 @@ value (gotcha 3):
   `SessionMiddleware` yourself, and pass the proxies to `Request::fromGlobals()`.
 - Behind a proxy, `x-forwarded-host`, `-proto` and `-port` are read from their
   LAST entry *(0.14.1)*, the one the nearest proxy wrote; an empty last entry
-  counts as no header. That proxy must write each header you trust on every
+  counts as no header (`X-Forwarded-Proto: "https, "` reads as `http` on a
+  plain-HTTP hop). That proxy must write each header you trust on every
   request, by overwriting or appending (nginx: `proxy_set_header
   X-Forwarded-Host $host;`, `X-Forwarded-Proto $scheme`, `X-Forwarded-Port
   $server_port`). One that writes it only sometimes lets the client choose:
@@ -409,6 +410,14 @@ value (gotcha 3):
   appending proxies, the value read is the nearest one's *(0.14.1)*: if the outer
   proxy rewrote `Host`, that is the internal name, so `allowed_hosts` refuses
   it; let the outer proxy overwrite instead.
+- *(dev)* An absolute-form request target (`GET https://example.com/x
+  HTTP/1.1`) gives only its path and query, from any peer, a trusted proxy
+  included. The scheme, host and port come from `HTTPS`, `Host` and
+  `SERVER_PORT`, or from the trusted `Forwarded` and `X-Forwarded-*` headers, as
+  for `/x`. Before this fix the target won, so a plain-HTTP request could read
+  as `https`. A trusted proxy that relayed an absolute target and sent no
+  `X-Forwarded-Proto` now reads as `http`: have it send `X-Forwarded-Proto`
+  (or `Forwarded`).
 - List `allowed_hosts` in production as the backstop. An entry without a port
   admits every port. When the app builds absolute URLs from the request (reset
   links, redirects), pin the port *(0.14.1)*: `app.example.com:443`,
@@ -596,12 +605,14 @@ line instead, so the session cookie and `setcookie()` calls survive, and
 SameSite=Lax`, percent-encodes the value as `setcookie()` does, replaces an
 earlier cookie of the same name, domain and path (the domain compared without
 case or a leading dot; the same name on another domain or path is kept as its
-own line), and refuses what browsers would drop.
+own line, and so is a constructor line without `Path=`, which browsers scope to
+the request's directory), and refuses what browsers would drop.
 `Secure` is on by default even where `session.secure` is `auto`: pass it from the
 request, as below. `hasHeader('Set-Cookie')` is true when only cookies exist,
-and `withoutHeader('Set-Cookie')` also clears them (`getHeader()` still reads
-only the header set by `withHeader()`). `new Response(cookies: [...])` takes a
-list of lines, never a name-to-value map:
+and `withoutHeader('Set-Cookie')` also clears the cookies of `withCookie()` and
+the constructor, not the session cookie or `setcookie()` calls, which PHP still
+sends (`getHeader()` still reads only the header set by `withHeader()`).
+`new Response(cookies: [...])` takes a list of lines, never a name-to-value map:
 
 ```php
 $response = Response::noContent()
