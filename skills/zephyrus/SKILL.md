@@ -134,6 +134,32 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 App\Kernel::run(dirname(__DIR__));
 ```
 
+*(dev)* The recommended way to get the router is the `router:` section of
+`config.yml` (see Configuration): drop the `Router` line and `withRouter()`, and
+`build()` builds the router from the section, reading the routes cache that
+`vendor/bin/zephyrus cache:warm` wrote in production and staging (see
+Deployment). `basePath` is required with it.
+
+```yaml
+router:
+  controllers:
+    App\Controllers: app/Controllers
+```
+
+```php
+return ApplicationBuilder::create()
+    ->withConfiguration($config, basePath: $root)   // no withRouter()
+    ->withRenderEngine($views)
+    // ...the same withMiddleware() calls
+    ->build();
+```
+
+Without a `router:` section nothing changes: keep `discoverControllers()` and
+`withRouter()` as in the example above, which runs the discovery on every
+request. An app that needs the router before `build()` calls
+`Router::fromConfiguration($config, basePath: $root)` and passes the result to
+`withRouter()`.
+
 What the builder does and does not do:
 
 - Every `with*()` returns a new builder. A call whose result is dropped mounts
@@ -169,7 +195,7 @@ a between-requests hook."
 
 ## Configuration
 
-Five built-in sections. Keys are accepted in snake_case or camelCase, one
+Five built-in sections, plus `router:` *(dev)* (below). Keys are accepted in snake_case or camelCase, one
 spelling per key. A key these sections do not know stops the boot with the
 closest accepted key (gotcha 1). Besides the keys below, they accept session
 `cookie_path`, security `trusted_headers`, localization `date_format`,
@@ -269,6 +295,52 @@ $billing = $config->section('billing'); // a BillingConfig
 A section of your own does not refuse unknown keys: a misspelled key there
 silently takes the default. `render:` and `mailer:` do refuse them *(0.15)*
 (`v0.14.1` ignored them: `render: { engin: php }` kept `latte`).
+
+### `router:` section *(dev)*
+
+```yaml
+router:
+  controllers:                       # required: PSR-4 namespace => directory, discovered in this order
+    App\Controllers: app/Controllers
+  middleware_groups:                 # optional, default none: name => middleware or group names
+    admin: [auth, audit]
+  cache: var/zephyrus/routes.php     # optional, this is the default
+```
+
+- Relative paths resolve against the `basePath` given to
+  `withConfiguration()`, never the current directory;
+  `ApplicationBuilder::buildFromConfigurationFile($path)` takes the directory of
+  the file as `basePath`. `cache` must be a `.php` file under that root:
+  `cache: config.yml` is refused (`the routes cache is PHP, so its file name must
+  end in .php`).
+- No value may carry a YAML tag, `!env` included: `cache:warm` reads the section
+  without the environment (`Configuration section 'router' field 'controllers'
+  holds a value under the !env tag, ...`). A directory that is missing, or holds
+  no class of its namespace, is refused (unlike `discoverControllers()`,
+  gotcha 15).
+- Write the namespace bare or in single quotes: in double quotes,
+  `"App\Controllers"` is a YAML escape error (`unknown escape character "\C"`).
+- `router` is a reserved section name: a factory registered under it is
+  refused. A section of your own named `routes` is refused as a typo of
+  `router` (gotcha 36); `routing` passes.
+
+### Configuration cache *(dev)*
+
+`vendor/bin/zephyrus cache:warm` also writes the parsed `config.yml` to
+`var/zephyrus/config.yml.php`, beside the file, and `Configuration::fromYamlFile()`
+reads it with no call from you. It holds the YAML before any tag is resolved, so
+`!env` is still read from the environment at every load and no environment value
+is written to disk; literal values are written as they are in `config.yml`, with
+its mode minus every write bit. The cache is a PHP file that is included, so
+never read a YAML file from a directory someone else can write. An absent cache
+is silent. A cache whose
+`config.yml` changed, that another framework version wrote, or that the owner
+and mode checks refuse (see Deployment), is ignored and the YAML is parsed
+instead, with one `error_log` line:
+
+```text
+Zephyrus: ignored the boot cache /var/www/html/var/zephyrus/config.yml.php: it is stale, its source changed after it was written. Run vendor/bin/zephyrus cache:warm to rebuild it, or vendor/bin/zephyrus cache:clear to remove it.
+```
 
 ## Security wiring *(0.14)*
 
@@ -414,6 +486,12 @@ final class ProjectController extends Controller
 - `discoverControllers()` registers every concrete class under the directory
   whose namespace matches; a wrong directory or namespace registers nothing,
   silently (gotcha 15).
+- *(dev)* `Router::fromConfiguration($config, basePath: $root)` builds the router
+  of the `router:` section (`build()` calls it when you pass no `withRouter()`).
+  In production and staging it reads the routes cache; in development and
+  testing it always discovers and never opens the cache. A missing, stale or
+  refused cache falls back to discovery, never to a failed request (gotcha 34).
+  `basePath` must be absolute.
 - `#[WithoutMiddleware(SessionMiddleware::class)]` *(0.14)* on a class or method
   skips a global middleware for matched routes (a stateless webhook, a health
   probe). The framework's security middleware (`ForceHttps`, `AllowedHosts`,
@@ -442,6 +520,13 @@ final class StatusController extends ApiController
 
 With `MODE` unset, `GET /v1/status` is not registered (404). A controller
 without `#[RequiresEnv]`, such as a `/health` probe, registers in every process.
+
+*(dev)* With the routes cache, `#[RequiresEnv]` is still evaluated on every
+request: the warm keeps each pair and writes no environment value, so one cache
+serves every `MODE` and `APP_ENV`, and a `MODE=api` process never serves a route
+of another mode. Two routes of one name that can be registered together (no
+`#[RequiresEnv]` pair tells them apart) are refused, by the warm and by the
+discovery in development, with `Route name "dup" is declared by App\Controllers\AController@a and by App\Controllers\BController@b, which can be registered together: rename one, or require one environment variable at a different value on each with #[RequiresEnv].`
 
 ## Request and response
 
@@ -534,7 +619,11 @@ $builder = $builder->registerMiddleware('auth', new RequireUserMiddleware());
 `HeaderTokenGuard`, `IpAllowlistGuard`, composable with `AllAuthGuard`,
 `AnyAuthGuard` and `NotAuthGuard` (refusal: 401 JSON `{"error":"Unauthorized"}`).
 `$router->middlewareGroup('admin', ['auth', 'audit'])` names a list, expanded
-when routes are added: declare groups before `discoverControllers()`. `build()`
+when routes are added: declare groups before `discoverControllers()`. *(dev)* With
+the `router:` section, declare them under `router.middleware_groups` instead
+(the router is built before your code can call `middlewareGroup()`); a
+`#[MiddlewareGroup('nope')]` that section does not declare fails the warm
+(`Middleware group "nope", named by a #[MiddlewareGroup] of App\Controllers\BController@b, is not declared under router.middleware_groups: declare it there, or the route would run without its middlewares.`). `build()`
 refuses a route that names a middleware or group it cannot resolve (gotcha 17).
 
 ## Sessions, CSRF and flash messages
@@ -1005,6 +1094,70 @@ With `application.debug: true`, an exception nothing answers leaves `handle()`
 in a test, so PHPUnit reports it whole *(0.14.1)*; with debug off the test gets the
 logged 500 (see Errors).
 
+## Deployment *(dev)*
+
+Warm the boot caches once, when the image is built:
+
+```dockerfile
+COPY . /var/www/html
+RUN composer install --no-dev --optimize-autoloader && composer dump-autoload --optimize
+RUN php vendor/bin/zephyrus cache:warm
+USER www-data
+```
+
+- Run it after `COPY` and `composer dump-autoload` (the controllers must be
+  autoloadable), before any `USER www-data`, and on a path no later `chown`
+  touches. The caches are PHP files the application includes, protected by
+  their owner and file modes: the owner must be root or the owner of
+  `config.yml`, and neither the file nor any directory between it and the
+  application root (the root itself excluded) may be writable by group or
+  others. A cache that fails that check is not
+  included (an `error_log` line, then the YAML and the discovery serve).
+- They live in `var/zephyrus/`, outside `cache/` on purpose: an application that
+  gives `cache/` to `www-data` lets it rename a root-owned directory inside it
+  and plant its own file. The warm writes `var/zephyrus/.gitignore` (`*`) unless
+  one is there; add `var/zephyrus/` to `.dockerignore`, so each image warms its
+  own.
+- Run it as root or as the owner of `config.yml`; any other user is refused,
+  because the application would ignore what it writes: `this process is neither
+  root nor the owner of <root>/config.yml, so the application would ignore the
+  cache: run vendor/bin/zephyrus cache:warm as root (before USER in a
+  Dockerfile) or as that owner.`
+- `cache:warm` writes `var/zephyrus/config.yml.php` and, when `config.yml`
+  declares `router:`, `var/zephyrus/routes.php`. It reads no `.env` and
+  resolves no `!env`, so it succeeds with an empty environment. It prints one
+  `Wrote <path>` line per file (the routes line ends with `(N routes)`), and
+  `No router: section in <file>, so no routes cache was written` when there is
+  none. Exit codes: 0 written, 1 refused (message on stderr), 2 usage error.
+  Before anything is written it checks every configuration and its `router:`
+  section, the process owner, and that a file already at a cache path carries
+  the warm header; the directory guards (mode, owner, link) and the
+  regular-file check run when each file is written, so a refused directory can
+  leave the caches written before it (valid, `.gitignore` included). A file at a cache path that the
+  warm did not write is never replaced or deleted: `Cannot write the boot cache
+  <path>: the file there was not written by vendor/bin/zephyrus cache:warm, so
+  it is left in place.`
+- `vendor/bin/zephyrus cache:clear` deletes both files and exits 0 when they
+  are already gone: run it on a local staging that was warmed.
+  It checks the header only when it deletes, so it can remove the caches of a
+  first configuration before refusing a foreign file in the next.
+- Limits: `cache:warm` does not warm `router:` from a `config.yml` that is a
+  symbolic link (it refuses with a directory-not-found message, and the boot
+  discovers the routes and logs `no routes cache`). `withConfigurationFile()`
+  then `build()`, and `buildFromConfigurationFiles([...])`, still refuse a
+  `router:` section for lack of a `basePath`, with the fix in the message; only
+  `fromConfigurationFile()` and `buildFromConfigurationFile()` take the
+  directory of the file.
+- `--config=PATH` (repeatable) warms another file; a relative path is read from
+  the current directory, and the default is the `config.yml` at the project
+  root, from any directory. The routes cache is checked against
+  `<basePath>/config.yml` (gotcha 35).
+- Without the warm, production and staging still work: the YAML is parsed and
+  the controllers discovered on every request, with one `error_log` line per
+  request: `Zephyrus: no routes cache at /var/www/html/var/zephyrus/routes.php, so the controllers were discovered for this request. Run vendor/bin/zephyrus cache:warm to write it.`
+  The warm saved about 7 ms (routes) and 2 ms (configuration) per request on an
+  app of 68 controllers.
+
 ## Other modules
 
 Read the reference file when the task touches its subject:
@@ -1018,8 +1171,9 @@ Read the reference file when the task touches its subject:
 | `Container` | auto-wired controllers through `withContainer()` (see Bootstrap) | |
 | `Event` | `EventDispatcher`; listen to `ExceptionEvent` (see Errors) | |
 
-`FileSystem`, `Exceptions`, the route cache and `Http\SseEmitter` are framework
-internals or niche helpers that most apps never call.
+`FileSystem`, `Exceptions` and `Http\SseEmitter` are framework internals or
+niche helpers that most apps never call. *(dev)* `RouteCache` is `@internal`:
+use the `router:` section and `vendor/bin/zephyrus` (see Deployment).
 
 ## Gotchas, each with its repro
 
@@ -1203,6 +1357,10 @@ out: 0 routes, no error
 in:  discoverControllers('Wrong\\Namespace', <the real controllers directory>)
 out: 0 routes, no error
 ```
+
+*(dev)* The `router:` section refuses both: `<root>/app/Nope, the directory of App\Controllers, is not a directory`,
+or `<root>/app/Empty holds no class of the namespace App\Controllers`.
+`discoverControllers()` is unchanged.
 
 **16. Route paths the router refuses at registration.**
 
@@ -1401,11 +1559,70 @@ in:  the same after App::setFormatter(new Formatter('fr_CA', 'CAD'))
 out: "Total : 1 234,50 $" (the two spaces the formatter writes are U+00A0)
 ```
 
+**34. *(dev)* A stale routes cache is ignored, but only to the second.** The
+cache is checked against the mtime and size of every file under the controller
+directories, the files of the parent classes, traits and interfaces of each
+controller, and the content of `config.yml`. A change it sees falls back to
+discovery with one log line. One it cannot see is served stale: a same-size
+edit that keeps the mtime (`cp -p`, `rsync -t`) or lands in the same second as
+the warm, and a constant of another class read by an attribute.
+
+```text
+in:  cache:warm, then add `// x` to a controller, boot in production
+out: error_log: Zephyrus: ignored the boot cache <root>/var/zephyrus/routes.php: it is stale, its source changed after it was written. Run vendor/bin/zephyrus cache:warm to rebuild it, or vendor/bin/zephyrus cache:clear to remove it.   (the discovery serves)
+in:  cache:warm, then rename '/health' to '/hxalth' (same size) and restore the file's mtime with touch -r
+out: GET /health => 200, no log line (the cache serves the old route)
+in:  cache:warm, then add a comment to config.yml
+out: both caches are ignored, one log line each
+```
+
+Warm after every deploy, as the last build step, and never rewrite files after it.
+
+**35. *(dev)* The routes cache is checked against `<basePath>/config.yml`.**
+`Configuration` does not know its source file, so `router:` in another file is
+refused by the warm, and an app with no `config.yml` at its root discovers on
+every request with a log line.
+
+```text
+in:  cache:warm --config=tenant.yml, tenant.yml declaring router:
+out: cache:warm failed for <root>/tenant.yml: Configuration file tenant.yml declares router:, but router: is cached only from config.yml at the application root: move the router: section to that file.
+in:  production, basePath holding no config.yml
+out: error_log: Zephyrus: the controllers were discovered for this request: router: is cached only from config.yml at the application root, and <root>/config.yml does not exist.
+```
+
+**36. *(dev)* A custom `routes:` section is refused as a typo of `router`.** Name
+it `routing` or anything else further from `router`. `router:` itself is
+reserved: a factory registered under it throws.
+
+```text
+in:  routes: { controllers: { App\Controllers: app/Controllers } }
+out: ConfigurationException: Configuration key 'routes' is not a known section: did you mean "router"? A section of your own needs a factory registered under its name in the $sectionFactories argument of the Configuration factories.
+in:  Configuration::fromYamlFile($path, ['router' => MyRouterConfig::class])
+out: InvalidArgumentException: Section factory "router" collides with the built-in section "router"; read it with $configuration->router instead.
+```
+
+**37. *(dev)* Never build a route from a secret.** The cache writes the routes,
+their paths and their `#[RequiresEnv]` pairs in clear into
+`var/zephyrus/routes.php`. An attribute argument that reads a constant defined
+from the environment (a path prefix, a variable value) is written as it was at
+the warm, in the image. `config.yml` literals go into `config.yml.php` the same
+way; `!env` never does.
+
+**38. *(dev)* The warm refuses a directory writable by group or others.** A
+`umask 002` build, or a `var/` made `775`, stops it.
+
+```text
+in:  chmod 775 var; cache:warm
+out: cache:warm failed for <root>/config.yml: Cannot write the boot cache <root>/var/zephyrus/config.yml.php: <root>/var is writable by its group or by others: run chmod g-w,o-w <root>/var.
+```
+
 ## Cheat sheet
 
 | Need | Write |
 | --- | --- |
 | Boot | `ApplicationBuilder::create()->withConfiguration($config, basePath: $root)->withRouter($router)->...->build()` |
+| Boot with the routes cache *(dev)* | `router: { controllers: { App\Controllers: app/Controllers } }` in `config.yml`, then the same chain without `withRouter()` |
+| Warm / clear the caches *(dev)* | `RUN php vendor/bin/zephyrus cache:warm` in the image build, before `USER www-data`; `vendor/bin/zephyrus cache:clear` |
 | Serve | `$app->handle(Request::fromGlobals(trustedProxies: $config->security->trustedProxies, trustedHeaders: $config->security->trustedHeaders))->send()` |
 | Load config | `Configuration::fromYamlFile($path, ['render' => RenderConfig::class])` |
 | Read config | `$config->security->maxBodySize`, `$config->database`, `$config->section('render')`, `config('render', 'directory')` |
