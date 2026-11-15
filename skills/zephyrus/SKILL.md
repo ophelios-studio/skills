@@ -589,7 +589,9 @@ $back = Response::localRedirect('//evil.example/phish', '/'); // off-site target
 leaves the original unchanged. Keep the result (`$response = $response->withHeader(...)`).
 The copying `with*()` methods (the builders, `Route`, `Router`, `FormValidator`,
 `ContentSecurityPolicy` and `PaginationRequest` included) carry `#[\NoDiscard]`, so on
-PHP 8.5+ calling one as a statement and dropping the result raises a warning.
+PHP 8.5+ calling one as a statement and dropping the result raises a warning. To drop it
+on purpose, such as in a test that expects the call to throw, assign it
+(`$ignored = ...`): `(void)` is PHP 8.5 syntax.
 
 `Controller` (optional base class) adds `json()`, `created()`, `text()`,
 `noContent()`, `respond()`, `redirect()`, `localRedirect()` *(0.14)*, `abort()`,
@@ -628,9 +630,9 @@ $response = Response::noContent()
     ->withCookie('lang', 'fr', secure: $request->uri()->isSecure()); // false on plain-HTTP development
 $response->cookies; // ['theme=dark; Max-Age=31536000; Path=/; Secure; HttpOnly; SameSite=Lax',
                     //  'lang=fr; Path=/; HttpOnly; SameSite=Lax']
-$response->withCookie('sid', 'x', sameSite: 'None', secure: false);
+$ignored = $response->withCookie('sid', 'x', sameSite: 'None', secure: false);
 // InvalidArgumentException: Cookie "sid" cannot use SameSite=None without Secure: browsers discard it.
-$response->withCookie('__Host-sid', 'x', path: '/app');
+$ignored = $response->withCookie('__Host-sid', 'x', path: '/app');
 // InvalidArgumentException: Cookie "__Host-sid" uses the __Host- prefix, which requires Secure, the path "/" and no domain.
 ```
 
@@ -1452,7 +1454,8 @@ out: InvalidArgumentException: Unknown security key "max_body_size". Accepted na
 ```
 
 **4. A dropped builder clone mounts nothing.** The first line below gets the
-same `security.maxBodySize is not enforced as declared` refusal as gotcha 3:
+same `security.maxBodySize is not enforced as declared` refusal as gotcha 3 (on PHP 8.5+
+the dropped line also warns):
 
 ```php
 $builder->withMiddleware(new MaxBodySizeMiddleware($config->security->maxBodySize)); // result dropped
