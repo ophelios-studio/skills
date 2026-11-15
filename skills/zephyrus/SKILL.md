@@ -96,10 +96,11 @@ final class Kernel
     {
         $config = Configuration::fromYamlFile($root . '/config.yml');
 
-        // fromGlobals() does not read config.yml: pass the proxy settings yourself.
+        // fromGlobals() does not read config.yml: pass the proxy settings and the body limit yourself.
         $request = Request::fromGlobals(
             trustedProxies: $config->security->trustedProxies,
             trustedHeaders: $config->security->trustedHeaders,
+            maxBodySize: $config->security->maxBodySize,
         );
 
         self::application($root, $config)->handle($request)->send();
@@ -433,13 +434,20 @@ value (gotcha 3):
 - `withoutSecurityWiringCheck()` turns the whole check off; prefer naming the
   one key with `withAcknowledgedSecurityKeys()`.
 
-A body over `max_body_size` (the declared `Content-Length`, else the raw body)
-is a 413: `text/plain` when `Accept` lists `text/html`, JSON
+A body over `max_body_size` (the largest of the declared `Content-Length`, the raw
+body and the uploaded files) is a 413: `text/plain` when `Accept` lists `text/html`, JSON
 `{"error":"Request body too large."}` otherwise. It is a budget, not a
 defence: also set the web server's limit (`client_max_body_size`,
-`LimitRequestBody`) and `post_max_size`. To answer yourself, pass `onFailure`
+`LimitRequestBody`). To answer yourself, pass `onFailure`
 (a `BodyTooLarge` carries `bytes` and `maxBytes`); returning `null` keeps the
-default:
+default.
+Give `Request::fromGlobals(maxBodySize: ...)` the same limit: without it the whole
+body is read into memory before this middleware can refuse it. With it, the raw
+input is read at most one byte past the limit, and a body over the limit arrives
+unparsed (empty, `isMalformed()` true). That covers `php://input` only: PHP reads a
+form or an upload into `$_POST` and `$_FILES` itself, up to `post_max_size`, before
+`fromGlobals()` runs, so set `post_max_size` and the web server's limit to the same
+budget:
 
 ```php
 $builder = $builder->withMiddleware(new MaxBodySizeMiddleware(
@@ -1905,7 +1913,7 @@ out: DatabaseException: Database refuses a persistent PDO, whose session would c
 | Boot | `ApplicationBuilder::create()->withConfiguration($config, basePath: $root)->withRouter($router)->...->build()` |
 | Boot with the routes cache *(0.16)* | `router: { controllers: { App\Controllers: app/Controllers } }` in `config.yml`, then the same chain without `withRouter()` |
 | Warm / clear the caches *(0.16)* | `RUN php vendor/bin/zephyrus cache:warm` in the image build, before `USER www-data`; `vendor/bin/zephyrus cache:clear` |
-| Serve | `$app->handle(Request::fromGlobals(trustedProxies: $config->security->trustedProxies, trustedHeaders: $config->security->trustedHeaders))->send()` |
+| Serve (mount `MaxBodySizeMiddleware` with the same limit) | `$app->handle(Request::fromGlobals(trustedProxies: $config->security->trustedProxies, trustedHeaders: $config->security->trustedHeaders, maxBodySize: $config->security->maxBodySize))->send()` |
 | Load config | `Configuration::fromYamlFile($path, ['render' => RenderConfig::class])` |
 | Read config | `$config->security->maxBodySize`, `$config->database`, `$config->section('render')`, `config('render', 'directory')` |
 | Global middleware | `$builder = $builder->withMiddleware($m)` (first added runs outermost) |
