@@ -851,6 +851,12 @@ accepts the string `'20'` and refuses `true`. Every failing rule adds its
 message. `Rules::required()` passes `'   '`: add `Rules::notBlank()`. A field
 without `required()` skips its rules when empty. Custom rule:
 `Rule::of(fn (mixed $value): bool => $value === 'ok', 'Wrong code.')`.
+Core's rules and `Controller::validate()` keep the value out of their own frames
+in an exception's trace (otherwise `getTrace()` shows it when
+`zend.exception_ignore_args` is off), though the `Request` your action received
+still holds the body; a custom closure that receives a secret marks its
+parameter itself:
+`Rule::of(fn (#[\SensitiveParameter] mixed $value): bool => $value === $expected, 'Wrong.')`.
 
 ## Errors and debugging
 
