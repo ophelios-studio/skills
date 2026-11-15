@@ -822,6 +822,34 @@ md5); a missing file is returned unchanged. Latte templates can call `route()`
 and other PHP functions directly; add your own through
 `$latteEngine->getLatteEngine()->addFunction()`.
 
+A Composer package that ships Latte templates declares them on a
+`LatteEngine` (`addNamespace()` is not part of `RenderEngine`: `PhpEngine` has
+none), and they render as `@namespace/page`:
+
+```php
+$views = new LatteEngine($root . '/app/Views', $root . '/cache/latte');
+// or, from createEngine(): if ($views instanceof LatteEngine) { ... }
+$views->addNamespace('acme', $root . '/vendor/acme/mailer/resources/views');
+$views->render('@acme/welcome', ['name' => 'Ana']);   // also {include '@acme/welcome.latte'}, {layout}, {embed}, {import}
+```
+
+A name is lowercase letters, digits, `_` and `-`; the directory must be
+absolute and exist, and declaring a namespace twice throws
+`InvalidArgumentException`. Declare the views sub-directory of the package,
+not its root: the namespace opens every `.latte` file under it to a page name
+taken from user input (`render($_GET['page'])`). Only a name of the form
+`@namespace/...` is namespaced: `{layout '@layout.latte'}` stays a plain file.
+
+An application overrides one package template without forking it:
+`app/Views/vendor/acme/welcome.latte` is read before the package file, and
+`@namespace/` includes inside the package see the override too. A relative
+name resolves against the directory of the file that holds it, so an override
+does not see its package siblings (`Missing template file`): in a package
+template, include siblings as `@acme/name.latte`, never `name.latte`. `..`,
+NUL bytes and symbolic links leaving the root are refused like for plain
+pages; an undeclared namespace throws `RenderException` naming the declared
+ones, and `exists()` answers false for it.
+
 ## Validation
 
 ```php
