@@ -585,6 +585,12 @@ $response->headers['Cache-Control'];     // null: names are stored lowercased
 $back = Response::localRedirect('//evil.example/phish', '/'); // off-site target: redirects to '/'
 ```
 
+`Request` and `Response` are immutable: each `with*()` returns a modified copy and
+leaves the original unchanged. Keep the result (`$response = $response->withHeader(...)`).
+The copying `with*()` methods (the builders, `Route`, `Router`, `FormValidator`,
+`ContentSecurityPolicy` and `PaginationRequest` included) carry `#[\NoDiscard]`, so on
+PHP 8.5+ calling one as a statement and dropping the result raises a warning.
+
 `Controller` (optional base class) adds `json()`, `created()`, `text()`,
 `noContent()`, `respond()`, `redirect()`, `localRedirect()` *(0.14)*, `abort()`,
 `abortJson()` and `validate()`, plus `before()`/`after()` hooks; an override of
