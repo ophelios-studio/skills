@@ -703,13 +703,58 @@ On PHP 8.6, a class implementing `SessionHandlerInterface` must also define
 `create_sid()` and `validateId()`: otherwise PHP raises a warning when it
 declares the class and deprecates registering it.
 `DatabaseSessionHandler` defines both *(dev)*: its ids are 32 lowercase hex
-characters, so a custom `idPattern` must accept them. A handler that wraps it
-delegates both, as it delegates `open()`, `read()` and `close()`:
+characters, and its constructor throws `SessionException` for a custom
+`idPattern` that refuses them. A handler that wraps it implements the same
+three interfaces and delegates every callback, `create_sid()`, `validateId()`
+and `updateTimestamp()` included. It marks `$id` and `$data`
+`#[\SensitiveParameter]` on `read()`, `write()`, `updateTimestamp()`,
+`destroy()` and `validateId()`, or a debug page shows the session id (a bearer
+credential) and the payload in its frames:
 
 ```php
-public function create_sid(): string { return $this->inner->create_sid(); }
-public function validateId(string $id): bool { return $this->inner->validateId($id); }
+final class AppSessionHandler implements
+    \SessionHandlerInterface,
+    \SessionIdInterface,
+    \SessionUpdateTimestampHandlerInterface
+{
+    public function __construct(private readonly DatabaseSessionHandler $inner) {}
+
+    public function open(string $path, string $name): bool { return $this->inner->open($path, $name); }
+    public function close(): bool { return $this->inner->close(); }
+    public function create_sid(): string { return $this->inner->create_sid(); }
+
+    public function validateId(#[\SensitiveParameter] string $id): bool
+    {
+        return $this->inner->validateId($id);
+    }
+
+    public function read(#[\SensitiveParameter] string $id): string|false
+    {
+        return $this->inner->read($id);
+    }
+
+    public function write(#[\SensitiveParameter] string $id, #[\SensitiveParameter] string $data): bool
+    {
+        return $this->inner->write($id, $data);
+    }
+
+    public function updateTimestamp(#[\SensitiveParameter] string $id, #[\SensitiveParameter] string $data): bool
+    {
+        return $this->inner->updateTimestamp($id, $data);
+    }
+
+    public function destroy(#[\SensitiveParameter] string $id): bool
+    {
+        return $this->inner->destroy($id);
+    }
+
+    public function gc(int $max_lifetime): int|false { return $this->inner->gc($max_lifetime); }
+}
 ```
+
+`create_sid()` needs no database, so a wrapper that resolves its handler
+lazily does not resolve it for `create_sid()`: build the inner handler with the
+Closure shown above, which it calls only once a callback needs the database.
 
 There is no automatic token injection: render the field in every form.
 `csrfToken()` is not a core function: the bootstrap above registers it with
