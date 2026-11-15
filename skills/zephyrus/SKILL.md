@@ -706,12 +706,12 @@ declares the class, and `session_set_save_handler()` deprecates registering it
 declaration warning reaches you).
 `DatabaseSessionHandler` defines both *(dev)*: its ids are 32 lowercase hex
 characters, and its constructor throws `SessionException` for a custom
-`idPattern` that refuses them. A handler that wraps it implements the same
-three interfaces and delegates every callback, `create_sid()`, `validateId()`
-and `updateTimestamp()` included. It marks `$id` and `$data`
-`#[\SensitiveParameter]` on `read()`, `write()`, `updateTimestamp()`,
-`destroy()` and `validateId()`, or a debug page shows the session id (a bearer
-credential) and the payload in its frames:
+`idPattern` that refuses them or is not a valid regular expression. A handler
+that wraps it implements the same three interfaces and delegates every
+callback, `create_sid()`, `validateId()` and `updateTimestamp()` included. It
+marks `$id` and `$data` `#[\SensitiveParameter]` on `read()`, `write()`,
+`updateTimestamp()`, `destroy()` and `validateId()`, or a debug page shows
+the session id (a bearer credential) and the payload in its frames:
 
 ```php
 final class AppSessionHandler implements
@@ -754,9 +754,11 @@ final class AppSessionHandler implements
 }
 ```
 
-`create_sid()` needs no database: a wrapper that builds its inner handler
-lazily must not build it in `create_sid()`. Simpler: pass the Closure shown
-above, which the handler calls only once a callback needs the database.
+`create_sid()` needs no database. Give the inner `DatabaseSessionHandler` the
+accessor shown above (`$database`, not `$database()`): constructing it then
+opens no connection, and it resolves the database only once a callback needs
+one, so the wrapper builds it up front and forwards `create_sid()` without
+connecting.
 
 There is no automatic token injection: render the field in every form.
 `csrfToken()` is not a core function: the bootstrap above registers it with
