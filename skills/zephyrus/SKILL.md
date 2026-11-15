@@ -699,6 +699,18 @@ To lower privileges (a role or password change), call `$session->regenerate()`: 
 it can write it back, in either order, unless that request regenerates its id
 too.
 
+On PHP 8.6, a class implementing `SessionHandlerInterface` must also define
+`create_sid()` and `validateId()`: otherwise PHP raises a warning when it
+declares the class and deprecates registering it.
+`DatabaseSessionHandler` defines both *(dev)*: its ids are 32 lowercase hex
+characters, so a custom `idPattern` must accept them. A handler that wraps it
+delegates both, as it delegates `open()`, `read()` and `close()`:
+
+```php
+public function create_sid(): string { return $this->inner->create_sid(); }
+public function validateId(string $id): bool { return $this->inner->validateId($id); }
+```
+
 There is no automatic token injection: render the field in every form.
 `csrfToken()` is not a core function: the bootstrap above registers it with
 `addFunction('csrfToken', $tokens->getToken(...))`.
