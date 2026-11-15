@@ -701,7 +701,9 @@ too.
 
 On PHP 8.6, a class implementing `SessionHandlerInterface` must also define
 `create_sid()` and `validateId()`: otherwise PHP raises a warning when it
-declares the class and deprecates registering it.
+declares the class, and `session_set_save_handler()` deprecates registering it
+(`SessionManager::setHandler()` registers it quietly, so there only the
+declaration warning reaches you).
 `DatabaseSessionHandler` defines both *(dev)*: its ids are 32 lowercase hex
 characters, and its constructor throws `SessionException` for a custom
 `idPattern` that refuses them. A handler that wraps it implements the same
@@ -752,9 +754,9 @@ final class AppSessionHandler implements
 }
 ```
 
-`create_sid()` needs no database, so a wrapper that resolves its handler
-lazily does not resolve it for `create_sid()`: build the inner handler with the
-Closure shown above, which it calls only once a callback needs the database.
+`create_sid()` needs no database: a wrapper that builds its inner handler
+lazily must not build it in `create_sid()`. Simpler: pass the Closure shown
+above, which the handler calls only once a callback needs the database.
 
 There is no automatic token injection: render the field in every form.
 `csrfToken()` is not a core function: the bootstrap above registers it with
