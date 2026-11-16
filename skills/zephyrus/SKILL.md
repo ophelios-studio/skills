@@ -1072,7 +1072,7 @@ all before it returns. Settings (`set_config(..., false)`, `SET`, `search_path`,
 brought, prepared statements, held cursors and `currval()` never reach the next request;
 the app resets nothing itself. One trace stays:
 a custom variable the previous holder set reads `''`, not `NULL`, so a row level
-security policy reads `nullif(current_setting('app.actor', true), '')`.
+security policy reads `nullif(current_setting('app.actor_id', true), '')`.
 
 - While a `Database` from a persistent `fromConfig()` is alive, another `fromConfig()`
   with the same connection settings and user opens a non-persistent connection (another
@@ -1107,11 +1107,75 @@ security policy reads `nullif(current_setting('app.actor', true), '')`.
   clients. The CLI honours the setting as is.
 - A pooler in transaction mode (PgBouncer `pool_mode = transaction`) cannot carry an
   actor set for the session with `set_config(..., false)`, persistent or not: the next
-  transaction may run on another server session.
+  transaction may run on another server session, and another client's transaction on
+  this one reads that actor. Publish it with `DatabaseActor` (below).
 - Persistence goes through this setting only: a `$pdoFactory` that forces
   `PDO::ATTR_PERSISTENT`, and `new Database($pdo)` with a persistent PDO, throw a
   `DatabaseException` (gotcha 39). On `v0.16.0` both were accepted and the next request
   inherited the session as it was.
+
+Row level security actor *(dev)*: `DatabaseActor` publishes the actor your policies read
+for one transaction only (`set_config(..., true)`), so it never reaches the next request,
+the next holder of a persistent connection, nor another client behind a pooler in
+transaction mode. PostgreSQL only; build it on the request's shared `Database` (brokers
+use the same one). Wrap it in a class of your own with named methods if you like; it is
+`final`.
+
+```php
+use Zephyrus\Data\DatabaseActor;
+
+$actor = new DatabaseActor($db, 'app', ['actor_id', 'org_id']); // app.actor_id, app.org_id
+
+// Middleware: the rest of the request runs in one transaction that carries the actor.
+return $actor->actAs(['actor_id' => (string) $userId], fn () => $next($request));
+
+// A service already inside Database::transaction(): the actor lasts until the outermost
+// transaction ends, even after a nested transaction() has returned.
+$actor->publish(['actor_id' => (string) $userId, 'org_id' => (string) $orgId]);
+```
+
+```sql
+CREATE POLICY own_projects ON project
+    USING (owner_id = nullif(current_setting('app.actor_id', true), '')::int);
+```
+
+- Publishing protects nothing by itself: a superuser, a role with `BYPASSRLS` and the
+  table owner without `ALTER TABLE ... FORCE ROW LEVEL SECURITY` see every row whatever
+  the actor. Connect as a role the policies apply to.
+- Without an actor (outside `actAs()`), a `SELECT` under RLS returns no row and an
+  `INSERT` is refused (SQLSTATE 42501), but an `UPDATE` or `DELETE` touches 0 rows
+  without an error: check the count `execute()` returns.
+- Inside `actAs()`, every `transaction()` is a savepoint and the commit happens when
+  `actAs()` returns: send a mail or any other "after commit" effect once `actAs()` has
+  returned, or queue it in the same transaction.
+- One actor per transaction, checked on every declared key in the statement that
+  publishes. A second `publish()`, or a value an earlier holder left with
+  `set_config(..., false)` (even on another key only), is refused and the actor in place
+  stays. To change actor, end the transaction (another `actAs()`); two identities in one
+  flow are two keys of one actor, published together. No method replaces the actor:
+  ```text
+  in:  $actor->actAs(['actor_id' => 'u1'], fn () => $actor->publish(['actor_id' => 'u2']))
+  out: DatabaseActorException: An actor is already published on this connection (one of "app.actor_id", "app.org_id" is set): an actor changes only by ending its transaction, and a value set for the whole session is refused.
+  ```
+- `actAs()` refuses a transaction already open (the actor would outlive the callback
+  until it ends: call `publish()` there); `publish()` refuses no transaction (PostgreSQL
+  would drop the actor before the next statement). A savepoint rolled back takes back
+  what `publish()` set inside it.
+- Values are non-empty strings, for declared keys only: cast an int id with `(string)`,
+  and leave a key out rather than publish `''`, which reads as no actor. The prefix and
+  each key are 1 to 63 lowercase letters, digits and underscores, not starting with a
+  digit. Policies keep reading `nullif(current_setting(name, true), '')`.
+- The refusal of a second actor covers the keys declared by that instance. Two instances
+  with different keys on one `Database` stack: declare every key your policies read in a
+  single instance.
+- Tests and CLI scripts: publish with `actAs()` around the call. A
+  `set_config(..., false)` left for the session makes every later `actAs()` on that
+  connection refuse.
+- Every refusal is a `DatabaseActorException` (a `ZephyrusRuntimeException`); its
+  message never holds a value, and the values are `#[\SensitiveParameter]`.
+- One transaction per request holds its locks while the page renders, counts against
+  `idle_in_transaction_session_timeout`, and keeps a server connection behind PgBouncer
+  for the whole request.
 
 One SQL statement per `execute()`: `"INSERT ...; INSERT ..."` inserts nothing
 and throws a `DatabaseException` whose `getMessage()` is `Query failed [SQLSTATE
@@ -1934,7 +1998,8 @@ out: DatabaseException: Database refuses a persistent PDO, whose session would c
 | Validate | `(new FormValidator([...]))->validate($data)->hasErrors()` |
 | Insert with id | `insertRowGetId('INSERT ... RETURNING id', [...])` |
 | Exact money | `$db->registerTypeConversion('NUMERIC', fn (string $v): string => $v)` |
-| Reuse connections | `persistent: true` in `database:` *(dev)*; RLS reads `nullif(current_setting('app.actor', true), '')` |
+| Reuse connections | `persistent: true` in `database:` *(dev)*; RLS reads `nullif(current_setting('app.actor_id', true), '')` |
+| RLS actor | `(new DatabaseActor($db, 'app', ['actor_id']))->actAs(['actor_id' => (string) $userId], $work)` *(dev)* |
 | Escape outside Latte | `e($value)` |
 | Own 413 page | `new MaxBodySizeMiddleware($max, onFailure: fn (Request $r, BodyTooLarge $b): ?Response => ...)` |
 | 404 for a missing record | `return $this->abort(404)` or `throw new RouteNotFoundException('project')` |
