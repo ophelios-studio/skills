@@ -10,25 +10,24 @@ applies, except `templates/` (not read here: edit `app/Views/`).
 From Packagist (the template is `zephyrus-framework/leaf`, `dev-main` only):
 
 ```bash
-composer create-project zephyrus-framework/leaf my-site dev-main --no-install
-composer config --working-dir=my-site --unset repositories
-composer update --working-dir=my-site
+composer create-project zephyrus-framework/leaf my-site dev-main
 composer build --working-dir=my-site
 ```
 
-The template's `composer.json` declares two `path` repositories
-(`../zephyrus2`, `../zephyrus-leaf-core`) that only exist on the
-maintainers' machines; a plain `create-project` stops on
-``The `url` supplied for the path (../zephyrus2) repository does not exist``.
-Without them Composer resolves `zephyrus-framework/core` (v0.13.0 at the
-time of writing) and `zephyrus-framework/leaf-core` `dev-main`.
+It works as is: the template's `composer.json` has no `path` repositories,
+so Composer resolves `zephyrus-framework/core` and
+`zephyrus-framework/leaf-core` `dev-main` from Packagist, and
+`composer update` and `composer require` work in the new project.
 
 From a Binary-tier site, `leaf eject` (one-way; refuses when
 `composer.json` exists unless `--force`). It writes `app/`, `bin/`,
 `vendor/`, `composer.json`, `composer.lock` and `README.md` (overwriting
 yours), plus two stray files, `.gitkeep` and `.staged`, to delete. It
 leaves `content/`, `config.yml`, `templates/`, `public/` and `dist/` alone.
-Then fix three things:
+CLI v0.1.6 writes the `composer.json` of the template it embeds, which
+still has the `path` repositories (`../zephyrus2`,
+`../zephyrus-leaf-core`) of the maintainers' machines. Then fix three
+things:
 
 1. **`public/index.php` is missing** (eject never writes into `public/`),
    so `composer dev` answers HTTP 500. Create it:
@@ -48,8 +47,9 @@ Then fix three things:
    only; move each override to the same relative path under `app/Views/`.
    Until then `leaf build` (which still works on an ejected project) and
    `composer build` produce different sites.
-3. **`composer update` and `composer require` fail** on the same path
-   repositories: run `composer config --unset repositories` first.
+3. **`composer update` and `composer require` fail** on those path
+   repositories (`In PathRepository.php line 163`): run
+   `composer config --unset repositories` first.
    `composer install` works as shipped (the lock and `vendor/` match).
 
 ## Application (`Leaf\Kernel`)
@@ -122,15 +122,17 @@ public function old(): Response
 - **Pass `requestPath`** so the canonical snippet in `SKILL.md` gets the
   right URL.
 - **A route with a `{parameter}` is never built on its own**: list the
-  concrete paths with `addPaths()`. On a multi-locale site `addPaths()`
-  paths are dropped (leaf-core `main`); declare a concrete route per page
-  instead, those build in every locale.
+  concrete paths with `addPaths()`. leaf-core `main` builds `addPaths()`
+  paths in every locale of a multi-locale site. A leaf-core that predates
+  the fix (the one inside CLI v0.1.6) drops them: declare a concrete route
+  per page instead, those build in every locale.
 - A redirect becomes a meta-refresh page (`/old-page/index.html` pointing
   at `/blog`).
 
 ## `bin/build.php`
 
-The shipped file plus the two extension points:
+The shipped file (a refused page name is reported on STDERR as
+`Build failed: <message>`, exit 1) plus the extension points:
 
 ```php
 <?php
@@ -148,8 +150,13 @@ use Leaf\StaticBuildResult;
 $app = new Application();
 $command = new BuildCommand($app);
 
-// Custom pages: keep this line, or app/Views/pages/*.latte never build.
-$command->addPaths(PageDiscovery::discover(ROOT_DIR . '/app/Views'));
+// Custom pages: keep this call, or app/Views/pages/*.latte never build.
+try {
+    $command->addPaths(PageDiscovery::discover(ROOT_DIR . '/app/Views'));
+} catch (InvalidArgumentException $e) {
+    fwrite(STDERR, 'Build failed: ' . $e->getMessage() . "\n");
+    exit(1);
+}
 
 // Concrete paths for parameterized routes.
 $command->addPaths(['/blog/my-post']);
