@@ -1709,6 +1709,8 @@ in:  #[Get('/posts/{id?}')]
 out: RouteSignatureException: Invalid route parameter name "id?" on route "/posts/{id?}": optional placeholders are not supported; declare a second route without that segment
 in:  #[Get('/search?q={q}')]
 out: RouteSignatureException: Invalid route path "/search?q={q}": the request path ends at "?", so this route would only match "/search"; declare "/search" and read the query string from the request
+in:  #[Route('/x', 'GE T')]
+out: RouteSignatureException: Invalid route method "GE T" on route "/x": an HTTP method is a token of letters, digits and !#$%&'*+-.^_`|~ (RFC 9110), such as GET or PROPFIND
 in:  #[WithoutMiddleware(CsrfMiddleware::class)]
 out: RouteMiddlewareException: Route "GET /hook" cannot skip "Zephyrus\Security\CsrfMiddleware": it is a framework security middleware. Exempt the path under security.csrf.exceptions instead
 in:  #[WithoutMiddleware(MaxBodySizeMiddleware::class)] on #[Post('/hook')]
