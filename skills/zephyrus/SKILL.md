@@ -714,7 +714,7 @@ declares the class, and `session_set_save_handler()` deprecates registering it
 declaration warning reaches you).
 `DatabaseSessionHandler` defines both *(dev)*: its ids are 32 lowercase hex
 characters, and its constructor throws `SessionException` for a custom
-`idPattern` that refuses them or is not a valid regular expression. A handler
+`idPattern` that refuses them, is not a valid regular expression, or cannot be matched against an id (backtrack limit). A handler
 that wraps it implements the same three interfaces and delegates every
 callback, `create_sid()`, `validateId()` and `updateTimestamp()` included. It
 marks `$id` and `$data` `#[\SensitiveParameter]` on `read()`, `write()`,
