@@ -1227,7 +1227,9 @@ offset, as PostgreSQL renders them under the default ISO `DateStyle`; relative
 formats, `infinity`, BC dates, years over 4 digits and named time zones are
 refused) into `DateTimeImmutable`/`DateTime` and nested `Entity` properties
 (from a JSON object column), throws on a value it cannot hydrate *(0.15)*, and
-`json_encode()` skips unassigned properties and those marked `#[JsonIgnore]`.
+`json_encode()` skips static properties *(dev)*, unassigned properties and
+those marked `#[JsonIgnore]`; on `v0.16.0` each public static property was a
+key of every object.
 On `v0.14.1` a date property stayed unset and most values it could not hydrate
 were skipped without an error. A nullable column needs a nullable property
 (gotcha 31). Pagination, sorting
@@ -1877,7 +1879,11 @@ out: no Tracy bar: a bare loopback entry admits no forwarded request; list <secr
 ```
 
 **31. A NULL column into a non-nullable property is a `TypeError`.** Declare
-every nullable column as `?type` on the entity.
+every nullable column as `?type` on the entity. A union or intersection property
+takes no non-null column value (`type string|int is not supported`, see
+`references/database.md`): give it a single type, or leave the column out of
+the query. *(dev)* A NULL into a non-nullable union or intersection is a
+`TypeError` too; on `v0.16.0` it was skipped without an error.
 
 ```text
 in:  Project::build($row) with $row->tags = null and public array $tags

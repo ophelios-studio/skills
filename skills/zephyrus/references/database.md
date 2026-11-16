@@ -126,9 +126,11 @@ values it could not hydrate were skipped without an error.
   value; `mixed` takes it unchanged; any other native type (`iterable`,
   `callable`, `false`, ...) throws `Cannot hydrate property $name of <Entity>:
   type <type> is not supported`. So does a non-null value for any other class
-  type, a union or an intersection. A `null` is not refused. Declare the
-  column as `string` and convert it in a method, or assign the property after
-  `build()` from a column the entity does not map.
+  type, a union or an intersection. A `null` goes into a property that accepts
+  it; into one that does not, PHP raises a `TypeError`, a union or intersection
+  included *(dev)* (on `v0.16.0` a union or intersection skipped it). Declare
+  the column as `string` and convert it in a method, or assign the property
+  after `build()` from a column the entity does not map.
 - *(dev)* Property forms: `build()` writes a non-private, non-static property,
   an uninitialized `readonly` one (`public readonly int $id;`) and a
   `protected(set)` one. It throws `InvalidArgumentException` for a `readonly`
