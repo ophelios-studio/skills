@@ -300,6 +300,12 @@ leaf:
 
 - Both tiers. Each entry runs in order with the project root as working
   directory and the build's stdio; the first non-zero exit fails the build.
+- **A hook runs without a shell, so on Windows a `.sh` script is not
+  launchable as is**: name the interpreter first, `["bash", "./scripts/one.sh"]`
+  (Git Bash), and likewise `["php", "scripts/two.php"]`. From CLI v0.1.7 the
+  error says so and shows the hook with `bash` first, after `exec format
+  error` on Unix or `not a valid Win32 application` on Windows; leaf-core
+  does not.
 - **Binary tier: hooks run after the new `dist/` is published**, from your
   real project root, so they can edit `dist/` (sitemap included). A
   failing hook exits non-zero but `dist/` is already replaced. `leaf dev`
