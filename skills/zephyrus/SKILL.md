@@ -1696,8 +1696,8 @@ in:  discoverControllers('Wrong\\Namespace', <the real controllers directory>)
 out: 0 routes, no error
 ```
 
-*(0.16)* The `router:` section refuses both: `<root>/app/Nope, the directory of App\Controllers, is not a directory`,
-or `<root>/app/Empty holds no class of the namespace App\Controllers`.
+*(0.16)* The `router:` section refuses both: `"<root>/app/Nope", the directory of App\Controllers, is not a directory`,
+or `"<root>/app/Empty" holds no class of the namespace App\Controllers`.
 `discoverControllers()` is unchanged.
 
 **16. Route paths the router refuses at registration.**
