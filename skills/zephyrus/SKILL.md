@@ -211,8 +211,9 @@ Localization `date_format`, `time_format` and `datetime_format` take `short`,
 `medium`, `long` or `full` (any case) or an ICU pattern; a blank value keeps the
 default, and `none` stops the boot *(dev)* with `Configuration section
 'localization' field 'time_format' has invalid value "none": it formats nothing.
-Use short, medium, long, full or an ICU pattern.` On `v0.16.0` `none` printed a
-full date and time.
+Use short, medium, long, full or an ICU pattern.` On `v0.16.0` `none` printed
+ICU's fallback, a date and a time such as `20260310 02:30 PM`, even from
+`time()`.
 
 ```yaml
 application:
