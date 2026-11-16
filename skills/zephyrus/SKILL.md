@@ -1164,7 +1164,10 @@ CREATE POLICY own_projects ON project
 - Values are non-empty strings, for declared keys only: cast an int id with `(string)`,
   and leave a key out rather than publish `''`, which reads as no actor. The prefix and
   each key are 1 to 63 lowercase letters, digits and underscores, not starting with a
-  digit. Policies keep reading `nullif(current_setting(name, true), '')`.
+  digit. Choose a prefix of your own (`app`), never `plpgsql`: once PL/pgSQL loads in
+  the session, PostgreSQL drops the value and refuses every later `set_config()` under
+  that prefix (SQLSTATE 42602). Policies keep reading
+  `nullif(current_setting(name, true), '')`.
 - The refusal of a second actor covers the keys declared by that instance. Two instances
   with different keys on one `Database` stack: declare every key your policies read in a
   single instance.
