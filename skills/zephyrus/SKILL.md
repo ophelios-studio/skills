@@ -434,8 +434,9 @@ value (gotcha 3):
 - `withoutSecurityWiringCheck()` turns the whole check off; prefer naming the
   one key with `withAcknowledgedSecurityKeys()`.
 
-A body over `max_body_size` (the largest of the declared `Content-Length`, the raw
-body and the uploaded files) is a 413: `text/plain` when `Accept` lists `text/html`, JSON
+A body over `max_body_size` (the largest of the declared
+`Content-Length`, the raw body, and the uploaded files plus the text fields of a body PHP
+parsed itself, such as a multipart form) is a 413: `text/plain` when `Accept` lists `text/html`, JSON
 `{"error":"Request body too large."}` otherwise. It is a budget, not a
 defence: also set the web server's limit (`client_max_body_size`,
 `LimitRequestBody`). To answer yourself, pass `onFailure`
