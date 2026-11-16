@@ -10,14 +10,16 @@ plus Latte templates in, plain HTML in `dist/` out. Every page is rendered
 through a real Zephyrus application, then written to disk.
 
 Verified against the leaf CLI **v0.1.6** (latest release), which embeds
-leaf-core `main` (`da38382`; leaf-core has no tags, Packagist serves only
-`dev-main`) and the `zephyrus-framework/leaf` template (`4a6d56b`).
-Everything below holds for that release unless marked otherwise.
+leaf-core `da38382` and the `zephyrus-framework/leaf` template `4a6d56b`,
+and against leaf-core `main` (`095d528`) and template `main` (`def1ca8`)
+on the Composer tier. leaf-core has no tags; Packagist serves only
+`dev-main`.
 
 leaf-core `main` and the template `main` fix several traps below. The
 Composer tier receives them with `composer update`; the v0.1.6 binary
 embeds the older leaf-core and keeps them until its next release (no date
-announced). Each such trap says which behaviour is which.
+announced). Each such trap says which behaviour is which. `composer show
+zephyrus-framework/leaf-core` gives the commit a Composer project runs.
 
 ## Two tiers (know which one you're in)
 
