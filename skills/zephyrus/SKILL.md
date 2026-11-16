@@ -207,6 +207,13 @@ closest accepted key (gotcha 1). Besides the keys below, they accept session
 `time_format`, `datetime_format` and `grouping_separator`, and database
 `charset`, `ssl_mode`, `ssl_root_cert` and `column_cache_version`.
 
+Localization `date_format`, `time_format` and `datetime_format` take `short`,
+`medium`, `long` or `full` (any case) or an ICU pattern; a blank value keeps the
+default, and `none` stops the boot *(dev)* with `Configuration section
+'localization' field 'time_format' has invalid value "none": it formats nothing.
+Use short, medium, long, full or an ICU pattern.` On `v0.16.0` `none` printed a
+full date and time.
+
 ```yaml
 application:
   environment: !env APP_ENV, production  # prod/production, stage/staging, test/testing, dev/development/local
