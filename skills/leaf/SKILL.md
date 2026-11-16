@@ -174,12 +174,18 @@ Your content here.
   `leaf.sections`**. Without `leaf.sections`, every section shows,
   alphabetically, labelled from the slug (`getting-started` becomes
   "Getting Started").
-- **Use hyphens, never underscores, in section folder names.** Config keys
-  are camelCased on load, so `my_notes:` in `leaf.sections` never matches
-  the `content/my_notes/` folder. CLI v0.1.6: the section vanishes from the
-  sidebar when `leaf.sections` is set, and is labelled "My_notes" when it
-  is not. leaf-core `main`: the folder is listed as an undeclared section
-  labelled "My Notes", so your configured label and position are ignored.
+- **Use hyphens, never underscores, in section folder names (CLI v0.1.6).**
+  Config keys are camelCased on load, so `my_notes:` in `leaf.sections` never
+  matches the `content/my_notes/` folder. CLI v0.1.6: the section vanishes
+  from the sidebar when `leaf.sections` is set, and is labelled "My_notes"
+  when it is not. Fixed in leaf-core `main` (Composer tier): `my_notes:`
+  matches `content/my_notes/`, with the configured label and position.
+  Hyphenated names behave the same in both tiers.
+- **A page title taken from a file name reads `_` as a space.** Without a
+  `title` in the front matter, `Second_note.md` is "Second Note". leaf-core
+  `main` (Composer tier) applies this everywhere, search index included; the
+  CLI v0.1.6 search index still shows "Second_note", so give such pages a
+  front matter `title`. The URL keeps the file name either way.
 
 ## Templates: overriding the bundled theme (Binary tier)
 
