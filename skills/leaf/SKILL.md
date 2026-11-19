@@ -1,6 +1,6 @@
 ---
 name: leaf
-description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps, each marked as fixed in leaf-core `main` (Composer tier) or still true in the CLI v0.1.6 binary: canonical URLs that all point home, custom pages missing from multi-locale builds, a sitemap and robots that need fixing, PHP warnings baked into the HTML, and what eject leaves broken.
+description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.7): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what eject leaves broken.
 ---
 
 # Zephyrus Leaf
@@ -9,17 +9,20 @@ A static site generator for documentation, landings and blogs: Markdown
 plus Latte templates in, plain HTML in `dist/` out. Every page is rendered
 through a real Zephyrus application, then written to disk.
 
-Verified against the leaf CLI **v0.1.6** (latest release), which embeds
-leaf-core `da38382` and the `zephyrus-framework/leaf` template `4a6d56b`,
-and against leaf-core `main` (`095d528`) and template `main` (`def1ca8`)
-on the Composer tier. leaf-core has no tags; Packagist serves only
-`dev-main`.
-
-leaf-core `main` and the template `main` fix several traps below. The
-Composer tier receives them with `composer update`; the v0.1.6 binary
-embeds the older leaf-core and keeps them until its next release (no date
-announced). Each such trap says which behaviour is which. `composer show
+Verified against the leaf CLI **v0.1.7** (latest release), which embeds
+leaf-core `1a2c175` (`main`), `zephyrus-framework/core` v3.17.0 and the
+`zephyrus-framework/leaf` template `511176b` (`main`). Traps below are
+checked with that binary; the Composer tier runs the same leaf-core and
+template when `composer update` resolves those commits. leaf-core has no
+tags; Packagist serves only `dev-main`. `composer show
 zephyrus-framework/leaf-core` gives the commit a Composer project runs.
+
+**A site built on CLI v0.1.6 or older** (or a Composer project locked
+before `1a2c175`) behaves differently in places, and the migration notes
+below say where: a non-default locale's `search.json` now carries the
+locale prefix in its URLs; custom pages and `addPaths()` routes are built
+on multi-locale sites; undeclared sections show in the sidebar; the
+sitemap drops `/404/`; `robots.txt` no longer doubles a trailing slash.
 
 ## Two tiers (know which one you're in)
 
@@ -47,8 +50,11 @@ curl -fsSL https://leaf.ophelios.com/install.sh | sh
 ```
 
 The script installs the latest release to `/usr/local/bin`. Override with
-`LEAF_VERSION=v0.1.6` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
+`LEAF_VERSION=v0.1.7` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
 `curl -fsSL https://leaf.ophelios.com/install.sh | LEAF_PREFIX="$HOME/bin" sh`.
+
+On macOS take v0.1.7 or later: the darwin binaries of v0.1.6 carry no
+`LC_UUID` and recent macOS refuses them (`missing LC_UUID load command`).
 
 Installing needs no PHP. **Building does**: the binary shells out to the
 `php` on `PATH` (8.4, with `intl`, `mbstring` and `tokenizer`; without
@@ -92,7 +98,7 @@ Same file on both tiers. The CLI refuses to build without `leaf.name`
 ```yaml
 application:
   environment: !env APP_ENV, dev
-  debug: !env APP_DEBUG, true        # see "PHP warnings end up in the HTML"
+  debug: !env APP_DEBUG, true        # see "PHP warnings in built pages"
 
 localization:
   locale: "en"                       # default locale, built at the root
@@ -167,25 +173,23 @@ Your content here.
 - The sidebar and the previous/next links come from a scan of `content/`,
   not from any sidebar file.
 - **`leaf.sections` orders and labels.** A section folder it does not list
-  still builds and lands in the search index and the sitemap. leaf-core
-  `main` (Composer tier) also shows it in the sidebar and the
-  previous/next chain, after the declared sections, alphabetically. CLI
-  v0.1.6 never shows it there: **list every section when you set
-  `leaf.sections`**. Without `leaf.sections`, every section shows,
+  still builds, and since CLI v0.1.7 shows in the sidebar, the
+  previous/next chain, the search index and the sitemap, after the declared
+  sections, alphabetically (labelled from the slug). CLI v0.1.6 hid it from
+  the sidebar and the chain. Without `leaf.sections`, every section shows,
   alphabetically, labelled from the slug (`getting-started` becomes
   "Getting Started").
-- **Use hyphens, never underscores, in section folder names (CLI v0.1.6).**
-  Config keys are camelCased on load, so `my_notes:` in `leaf.sections` never
-  matches the `content/my_notes/` folder. CLI v0.1.6: the section vanishes
-  from the sidebar when `leaf.sections` is set, and is labelled "My_notes"
-  when it is not. Fixed in leaf-core `main` (Composer tier): `my_notes:`
-  matches `content/my_notes/`, with the configured label and position.
-  Hyphenated names behave the same in both tiers.
-- **A page title taken from a file name reads `_` as a space.** Without a
-  `title` in the front matter, `Second_note.md` is "Second Note". leaf-core
-  `main` (Composer tier) applies this everywhere, search index included; the
-  CLI v0.1.6 search index still shows "Second_note", so give such pages a
-  front matter `title`. The URL keeps the file name either way.
+- **Underscores in section folder names work since CLI v0.1.7.** `my_notes:`
+  in `leaf.sections` matches `content/my_notes/`, with the configured label
+  and position (CLI v0.1.6 ignored the key, because config keys are
+  camelCased on load: hyphenate the folder on that version). Without
+  `leaf.sections`, the label is "My Notes".
+- **A page title taken from a file name reads `_` as a space**, search index
+  included: without a `title` in the front matter, `Second_note.md` is
+  "Second Note" (CLI v0.1.6: "Second_note" in the index). The URL keeps the
+  file name.
+- Each heading permalink (`.heading-permalink`) has `tabindex="-1"`, so
+  keyboard users do not tab through every heading anchor.
 
 ## Templates: overriding the bundled theme (Binary tier)
 
@@ -245,16 +249,15 @@ colon).
 
 - `.latte` only, no subdirectories.
 - The name must match `[a-z0-9][a-z0-9-]*` (`2fa` is fine). Any other name
-  (`About_Us.latte`) **fails the whole build**. CLI v0.1.6 (single-locale):
-  `/About_Us returned HTTP 404`. Composer tier (leaf-core `main`):
-  `Build failed: Page "About_Us.latte" cannot be served: ... Rename it to
-  "about-us.latte".` on STDERR, exit 1.
+  (`About_Us.latte`) **fails the whole build**, single or multi-locale,
+  with `Build failed: Page "About_Us.latte" cannot be served: ... Rename it
+  to "about-us.latte".` on STDERR, exit 1 (CLI v0.1.6: `/About_Us returned
+  HTTP 404`, and nothing at all on a multi-locale site).
 - `templates/pages/404.latte` is shadowed by the `/404` route: override
   `templates/404.latte` instead.
-- **CLI v0.1.6: custom pages are not built on multi-locale sites** (more
-  than one supported locale): no error, the page is just missing from
-  `dist/`, and a badly named page is not even reported. leaf-core `main`
-  (Composer tier) builds them in every locale: `/extra/` and `/fr/extra/`.
+- On a multi-locale site custom pages are built in every locale:
+  `/extra/` and `/fr/extra/`. CLI v0.1.6 skipped them silently (and did not
+  report a badly named one): a site built on it must rebuild to get them.
 
 ## Build pipeline
 
@@ -281,13 +284,15 @@ in order:
 9. `leaf.post_build` hooks (Composer tier here; the CLI runs them later).
 10. `onPostBuild()` callbacks (Composer tier).
 
-### PHP warnings end up in the HTML
+### PHP warnings in built pages
 
-The scaffold sets `debug: !env APP_DEBUG, true`. With debug on, a template
-warning (an undefined variable, a property read on null) is **written into
-the built page** as `Warning: ... in /tmp/leaf-build-.../cache/latte/...`
-while the build reports OK. Build production output with
-`APP_DEBUG=false leaf build`, or check with `grep -rl 'Warning:' dist/`.
+CLI v0.1.6 with `debug: true` (the scaffold default) wrote a template
+warning (an undefined variable, a property read on null) **into the built
+page** as `Warning: ... in /tmp/leaf-build-.../cache/latte/...` while the
+build reported OK. CLI v0.1.7 builds the same templates with no warning in
+the page, in either debug mode. A site built on v0.1.6 should be rebuilt
+and checked once: `grep -rl 'Warning:' dist/`. Keep building production
+output with `APP_DEBUG=false leaf build` anyway.
 
 ## Post-build hooks
 
@@ -302,10 +307,12 @@ leaf:
   directory and the build's stdio; the first non-zero exit fails the build.
 - **A hook runs without a shell, so on Windows a `.sh` script is not
   launchable as is**: name the interpreter first, `["bash", "./scripts/one.sh"]`
-  (Git Bash), and likewise `["php", "scripts/two.php"]`. From CLI v0.1.7 the
-  error says so and shows the hook with `bash` first, after `exec format
-  error` on Unix or `not a valid Win32 application` on Windows; leaf-core
-  does not.
+  (Git Bash), and likewise `["php", "scripts/two.php"]`. CLI v0.1.7 says so
+  when the system cannot execute the hook: `leaf build: hook [./scripts/h.sh]:
+  fork/exec ./scripts/h.sh: exec format error; hooks run without a shell, so
+  name the interpreter first, for example ["bash", "./scripts/h.sh"]` (on
+  Windows the cause reads `not a valid Win32 application`; not reverified
+  there). leaf-core does not add the hint.
 - **Binary tier: hooks run after the new `dist/` is published**, from your
   real project root, so they can edit `dist/` (sitemap included). A
   failing hook exits non-zero but `dist/` is already replaced. `leaf dev`
@@ -356,17 +363,22 @@ Locale-aware links in your own templates:
 <a href="{$localePrefix}/guide/intro">Guide</a>
 ```
 
-Traps on multi-locale sites (leaf-core `main`, CLI v0.1.6):
+Search and custom pages on multi-locale sites (CLI v0.1.7):
 
-- **CLI v0.1.6: custom pages and every `addPaths()` path are not built**
-  (see Custom pages). Composer tier: they are, in every locale.
-- **CLI v0.1.6: search is not localized in the browser.** The build writes
-  `/{locale}/search.json`, but the bundled `search.js` always fetches
-  `{base_url}/search.json`, and the URLs inside `/fr/search.json` carry no
-  `/fr` prefix. To localize search, override `search.js` (it is in
-  `public/assets/js/`) to fetch the locale's index and prefix the URLs.
-  Composer tier: the template's `search.js` loads the index of the page's
-  locale and the `/fr/search.json` URLs carry `/fr`.
+- **Custom pages and every `addPaths()` path are built in every locale**
+  (see Custom pages). CLI v0.1.6 built none of them.
+- **Search is localized.** `/{locale}/search.json` lists that locale's pages
+  with their full URLs, prefix included (`/fr/guide/intro`). The bundled
+  `search.js` reads `<meta name="leaf-search-url">` first, then
+  `leaf-base-url` plus `/search.json`; the head writes the page's own
+  locale index there. **Migration from v0.1.6:** its non-default
+  `search.json` wrote `/guide/intro` with no prefix. A site search script
+  that adds the locale prefix now produces `/fr/fr/guide/intro`, and a hook
+  that resolves `dirname(<search.json>) . url` points at a file that does
+  not exist: use `<dist> . url`, and `url + '/'` as the link.
+- Sidebar links on a non-default locale's pages carry no `/fr` prefix
+  (`/guide/intro`): they leave the locale, and a page that exists only in
+  `content/fr/` gets a dead link there (same on v0.1.6 and v0.1.7).
 - `composer dev` ignores `content/{locale}/` (the static build applies it):
   check translated Markdown in the build, not in the Composer dev server.
 
@@ -375,16 +387,17 @@ Traps on multi-locale sites (leaf-core `main`, CLI v0.1.6):
 **`sitemap.xml` and `robots.txt` exist only when `production_url` is set.**
 
 - `robots.txt` is `User-agent: *`, `Allow: /` and
-  `Sitemap: <production_url>/sitemap.xml`. CLI v0.1.6 builds it from the raw
-  value: a trailing slash in `production_url` produces `//sitemap.xml`.
-  leaf-core `main` writes a single slash.
+  `Sitemap: <production_url>/sitemap.xml`, with a single slash even when
+  `production_url` ends with one (CLI v0.1.6 wrote `//sitemap.xml`). Keep
+  the value without a trailing slash anyway.
 - The sitemap lists every built page with a trailing slash, multi-locale
-  with `xhtml:link` hreflang alternates and `x-default`. CLI v0.1.6 also
-  lists `/404/` (a dead URL once moved to `/404.html`) and `/{locale}/404/`,
-  and on multi-locale sites repeats the first listed locale's page set for
-  every locale, so a page that exists only in `content/fr/` is missing:
-  fix the file in a `post_build` hook (it exists by then). leaf-core `main`
-  lists no 404 page and each locale's own pages.
+  with `xhtml:link` hreflang alternates and `x-default`. It lists no 404
+  page, and each locale's own pages (a page that exists only in
+  `content/fr/` is listed under `/fr/`). **Migration from v0.1.6:** that
+  version listed `/404/` and `/{locale}/404/` (dead URLs once moved to
+  `/404.html`) and repeated the first locale's page set for every locale;
+  a `post_build` hook that patched the sitemap for either is now a no-op
+  to remove.
 - **The bundled head has no `<link rel="canonical">`, no hreflang, no
   `og:image`.** Add them in an overridden `templates/partials/head.latte`.
   **Nothing sets `$requestPath` on the Binary tier**: a canonical built
@@ -443,14 +456,14 @@ root, where most hosts look for it. Two proven patterns:
   this way for GitHub Pages):
 
 ```bash
-LEAF_VERSION=v0.1.6
+LEAF_VERSION=v0.1.7
 curl -fsSL "https://github.com/ophelios-studio/zephyrus-leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
-echo "c4750b1c5754bd57c4dfcf4edb5f42f1c10c91311bd429c7c7813e4121d0e1bf  $RUNNER_TEMP/leaf" | sha256sum --check --strict
+echo "efcd45bddfcf184fdb6affa9260fad1f7daf2b3afe436286b5a08852916549a6  $RUNNER_TEMP/leaf" | sha256sum --check --strict
 chmod +x "$RUNNER_TEMP/leaf"
 APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 ```
 
-  The checksum is the v0.1.6 `leaf-linux-amd64` line of the release's
+  The checksum is the v0.1.7 `leaf-linux-amd64` line of the release's
   `checksums.txt`; take the new one when you bump the version.
 
 ## Key rules
@@ -463,13 +476,10 @@ APP_DEBUG=false "$RUNNER_TEMP/leaf" build
   including file**; prove each one by a visible change.
 - **Never build canonical URLs from `$requestPath` alone**: use the
   `$section`/`$slug`/`$pagePath` snippet above.
-- **`production_url` without trailing slash** turns on sitemap and robots;
-  with the CLI v0.1.6 binary, clean `/404/` out of the sitemap in a hook.
-- **List every section in `leaf.sections`** (or none), hyphenated slugs only.
-- **CLI v0.1.6 multi-locale sites lose custom pages and `addPaths()`
-  routes**, and their browser search stays on the default locale; the
-  Composer tier builds both.
-- **Build production with `APP_DEBUG=false`** so warnings never ship.
+- **`production_url` without trailing slash** turns on sitemap and robots.
+- **Search URLs in a non-default locale already carry the prefix** (CLI
+  v0.1.7): never prefix them again.
+- **Build production with `APP_DEBUG=false`.**
 - **Post-build steps go in `leaf.post_build`** on either tier; write to
   `dist/` when the output must ship in the same build.
 - **`dist/` is the artifact.** `leaf build` replaces it; `composer build`
