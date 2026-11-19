@@ -10,7 +10,7 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against `v0.16.0`, the release a bare `composer
+Everything below was run against `v3.17.0`, the release a bare `composer
 require` installs. An API marked *(0.14)* is new in `v0.14.0`: `v0.13.0`
 lacks it, predates many breaking changes, and does not run the bootstrap below.
 Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
@@ -18,8 +18,8 @@ Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
 passage says what `v0.14.1` does instead. Behaviour marked *(0.16)* arrived in
 `v0.16.0`; the same passage says what `v0.15.0` does instead when it changed
 behaviour (the `router:` section and `cache:warm` are new API).
-Behaviour marked *(dev)* is on the `dev` branch, unreleased since `v0.16.0`; the
-same passage says what `v0.16.0` does instead.
+Behaviour marked *(3.17)* arrived in `v3.17.0`; the same passage says what
+`v0.16.0` does instead.
 The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
@@ -30,14 +30,18 @@ follow the message.
 {
     "require": {
         "php": "^8.4",
-        "zephyrus-framework/core": "^0.16"
+        "zephyrus-framework/core": "^3.17"
     },
     "autoload": { "psr-4": { "App\\": "app/" } }
 }
 ```
 
-Packagist serves the release: no `repositories` entry. `^0.16` stays on
-0.16.x, since a minor version may break the API before 1.0. The core requires
+Packagist serves the release: no `repositories` entry. From 3.17.0 the API is
+stable and follows semver: a minor or patch release stays compatible, and a
+breaking change waits for 4.0, announced first by a deprecation, so `^3.17` takes
+every 3.x. Composer does not move from `^0.16` to `^3.17` on its own: change the
+constraint by hand, then read the breaking changes of 3.17.0 in `CHANGELOG.md`,
+each with the change to make. The core is tested on PHP 8.4, 8.5 and 8.6. It requires
 `ext-intl`, `ext-mbstring`, `ext-pdo`, `ext-sodium` and `ext-fileinfo`, and
 brings `latte/latte`, `tracy/tracy`, `symfony/yaml`, `vlucas/phpdotenv` and
 `phpmailer/phpmailer`. PostgreSQL needs `pdo_pgsql`.
@@ -209,7 +213,7 @@ closest accepted key (gotcha 1). Besides the keys below, they accept session
 
 Localization `date_format`, `time_format` and `datetime_format` take `short`,
 `medium`, `long` or `full` (any case) or an ICU pattern; a blank value keeps the
-default, and `none` stops the boot *(dev)* with `Configuration section
+default, and `none` stops the boot *(3.17)* with `Configuration section
 'localization' field 'time_format' has invalid value "none": it formats nothing.
 Use short, medium, long, full or an ICU pattern.` On `v0.16.0` `none` printed
 ICU's fallback, a date and a time such as `20260310 02:30 PM`, even from
@@ -311,17 +315,17 @@ silently takes the default. `render:` and `mailer:` do refuse them *(0.15)*
 
 A section of your own names itself by its class in a type refusal (`Configuration
 section 'App\BillingConfig' field 'trialDays' has invalid value "abc": is not an
-integer.`) *(dev)*, since it does not know its key. Override `protected function
+integer.`) *(3.17)*, since it does not know its key. Override `protected function
 sectionName(): string` to return `'billing'`: `mailer:` and `render:` already name
 themselves `'mailer'` and `'render'`, where `v0.16.0` named their classes.
 
 A YAML syntax error stops the boot with `Failed to parse configuration file
 [config.yml]: invalid YAML near line 3 (the parser's detail is withheld, since it
-can quote a secret from the file).` *(dev)*; `v0.16.0` appended the parser's
+can quote a secret from the file).` *(3.17)*; `v0.16.0` appended the parser's
 message, which could quote a value of the file, and chained its exception.
 `getPrevious()` is null and no exception or file text is left in the trace's
-arguments *(dev)*: the line is in the message. An unreadable file says
-`Configuration file is not readable: config.yml` *(dev)*.
+arguments *(3.17)*: the line is in the message. An unreadable file says
+`Configuration file is not readable: config.yml` *(3.17)*.
 
 ### `router:` section *(0.16)*
 
@@ -420,7 +424,7 @@ value (gotcha 3):
   appending proxies, the value read is the nearest one's *(0.14.1)*: if the outer
   proxy rewrote `Host`, that is the internal name, so `allowed_hosts` refuses
   it; let the outer proxy overwrite instead.
-- *(dev)* An absolute-form request target (`GET https://example.com/x
+- *(3.17)* An absolute-form request target (`GET https://example.com/x
   HTTP/1.1`) gives only its path and query, from any peer, a trusted proxy
   included. The scheme, host and port come from `HTTPS`, `Host` and
   `SERVER_PORT`, or from the trusted `Forwarded` and `X-Forwarded-*` headers, as
@@ -729,7 +733,7 @@ On PHP 8.6, a class implementing `SessionHandlerInterface` must also define
 declares the class, and `session_set_save_handler()` deprecates registering it
 (`SessionManager::setHandler()` registers it quietly, so there only the
 declaration warning reaches you).
-`DatabaseSessionHandler` defines both *(dev)*: its ids are 32 lowercase hex
+`DatabaseSessionHandler` defines both *(3.17)*: its ids are 32 lowercase hex
 characters, and its constructor throws `SessionException` for a custom
 `idPattern` that refuses them, is not a valid regular expression, or cannot be matched against an id (backtrack limit). A handler
 that wraps it implements the same three interfaces and delegates every
@@ -1069,7 +1073,7 @@ built by `fromConfig()` go out as unnamed statements, bound by the server *(0.15
 protocol close under libpq 17)); a `new Database($pdo)` keeps named statements. See
 `references/database.md`.
 
-Persistent connections *(dev)*: `persistent: true` in the `database` section (a
+Persistent connections *(3.17)*: `persistent: true` in the `database` section (a
 boolean, `false` by default; `persistent: !env DB_PERSISTENT, false` works) keeps one
 connection per PHP process and reuses it on the next `fromConfig()`: about 0.3 ms instead
 of 18 ms for a new connection, measured locally with SCRAM. Each time `fromConfig()`
@@ -1123,7 +1127,7 @@ security policy reads `nullif(current_setting('app.actor_id', true), '')`.
   `DatabaseException` (gotcha 39). On `v0.16.0` both were accepted and the next request
   inherited the session as it was.
 
-Row level security actor *(dev)*: `DatabaseActor` publishes the actor your policies read
+Row level security actor *(3.17)*: `DatabaseActor` publishes the actor your policies read
 for one transaction only (`set_config(..., true)`), so it never reaches the next request,
 the next holder of a persistent connection, nor another client behind a pooler in
 transaction mode. PostgreSQL only; build it on the request's shared `Database` (brokers
@@ -1235,7 +1239,7 @@ offset, as PostgreSQL renders them under the default ISO `DateStyle`; relative
 formats, `infinity`, BC dates, years over 4 digits and named time zones are
 refused) into `DateTimeImmutable`/`DateTime` and nested `Entity` properties
 (from a JSON object column), throws on a value it cannot hydrate *(0.15)*, and
-`json_encode()` skips static properties *(dev)*, unassigned properties and
+`json_encode()` skips static properties *(3.17)*, unassigned properties and
 those marked `#[JsonIgnore]`; on `v0.16.0` each public static property was a
 key of every object.
 On `v0.14.1` a date property stayed unset and most values it could not hydrate
@@ -1257,10 +1261,10 @@ stops the boot (`mailer: { smtp: { prot: 25 } }` gives `Configuration section
 'mailer' field 'smtp.prot' is an unknown key: did you mean "smtp.port"?`),
 where `v0.14.1` kept the default. A dotted key written flat (`mailer: {
 smtp.host: h }`) gets `... field 'smtp.host' is written flat: nest it under
-'smtp', such as smtp: { host: ... }.` *(dev)* (`smtp.prot` gets `smtp: { port:
+'smtp', such as smtp: { host: ... }.` *(3.17)* (`smtp.prot` gets `smtp: { port:
 ... }`, the closest key). `smtp.port` is read as an
 integer, so `toArray()` returns `1025`, not `'1025'`, for `!env MAIL_PORT, 1025`;
-a null port (an empty `!env`) exports `587` *(dev)*, where `v0.16.0` exported null.
+a null port (an empty `!env`) exports `587` *(3.17)*, where `v0.16.0` exported null.
 `smtp.encryption` takes `tls` (the default), `ssl`, or `''` for none;
 `encryption: none` stops the boot with `Configuration section 'mailer' field
 'smtp.encryption' has invalid value "none": must be one of 'tls', 'ssl' or ''
@@ -1636,7 +1640,7 @@ out: environment = Production, isDebugEnabledForBoot() = false
 in:  no environment key
 out: environment = Production, debug = false
 in:  application: { environment: production, debug: true }, build()
-out: error_log: Zephyrus: application.debug is true while application.environment is production-like. Debug output has been FORCED OFF for this boot: ... If this is deliberate, call ApplicationBuilder::withProductionDebugAcknowledged(); even then, only clients named by withDebugClientAllowlist() (or loopback, without one) can see it.   (dev; v0.14.0 ends "(or loopback) can see it.")
+out: error_log: Zephyrus: application.debug is true while application.environment is production-like. Debug output has been FORCED OFF for this boot: ... If this is deliberate, call ApplicationBuilder::withProductionDebugAcknowledged(); even then, only clients named by withDebugClientAllowlist() (or loopback, without one) can see it.   (0.14.1; v0.14.0 ends "(or loopback) can see it.")
 ```
 
 **10. Booleans are strict, and an unset `!env` is null.** Give boolean tags a
@@ -1655,7 +1659,7 @@ out: false
 value set with Apache `SetEnv` or `fastcgi_param` is invisible: set it in the
 process environment (container env, php-fpm `env[NAME]`) or `.env`. The
 message of a refused name gives the tag's key and the reason, never the name,
-and the loader's trace arguments are `SensitiveParameterValue` *(dev)*.
+and the loader's trace arguments are `SensitiveParameterValue` *(3.17)*.
 
 ```text
 in:  $_SERVER['APP_ENV'] = 'dev' only; environment: !env APP_ENV, prod
@@ -1686,7 +1690,7 @@ out: 500 "Internal Server Error"; error_log: Zephyrus: unhandled exception, answ
 in:  throw new RuntimeException('database password leaked in this message'), Accept: application/json
 out: 500 {"error":{"status":500,"message":"Internal Server Error"}} (the message stays server-side)
 in:  withExceptionHandler(RuntimeException::class, fn () => throw new LogicException('the handler broke')), a controller throws RuntimeException('connection refused')
-out: 500 "Internal Server Error"; error_log: Zephyrus: exception handler failed, answered with a 500: LogicException: the handler broke in ..., then Zephyrus: exception the failed handler was answering: RuntimeException: connection refused in ...   (dev; v0.14.0 logs nothing)
+out: 500 "Internal Server Error"; error_log: Zephyrus: exception handler failed, answered with a 500: LogicException: the handler broke in ..., then Zephyrus: exception the failed handler was answering: RuntimeException: connection refused in ...   (0.14.1; v0.14.0 logs nothing)
 ```
 
 **14. Routes on a parent's methods are not registered for its subclasses.**
@@ -1890,7 +1894,7 @@ out: no Tracy bar: a bare loopback entry admits no forwarded request; list <secr
 every nullable column as `?type` on the entity. A union or intersection property
 takes no non-null column value (`type string|int is not supported`, see
 `references/database.md`): give it a single type, or leave the column out of
-the query. *(dev)* A NULL into a non-nullable union or intersection is a
+the query. *(3.17)* A NULL into a non-nullable union or intersection is a
 `TypeError` too; on `v0.16.0` it was skipped without an error.
 
 ```text
@@ -1974,7 +1978,7 @@ in:  chmod 775 var; cache:warm
 out: cache:warm failed for <root>/config.yml: Cannot write the boot cache <root>/var/zephyrus/config.yml.php: <root>/var is writable by its group or by others: run chmod g-w,o-w <root>/var.
 ```
 
-**39. A persistent PDO built outside `persistent: true` is refused *(dev)*.**
+**39. A persistent PDO built outside `persistent: true` is refused *(3.17)*.**
 Remove `PDO::ATTR_PERSISTENT` from the factory or the PDO and set `persistent: true`
 in the `database` section, in the same change. A factory that still forces it beside
 `persistent: true` is accepted, but draws from PDO's default pool rather than this
@@ -2018,8 +2022,8 @@ out: DatabaseException: Database refuses a persistent PDO, whose session would c
 | Validate | `(new FormValidator([...]))->validate($data)->hasErrors()` |
 | Insert with id | `insertRowGetId('INSERT ... RETURNING id', [...])` |
 | Exact money | `$db->registerTypeConversion('NUMERIC', fn (string $v): string => $v)` |
-| Reuse connections | `persistent: true` in `database:` *(dev)*; RLS reads `nullif(current_setting('app.actor_id', true), '')` |
-| RLS actor | `(new DatabaseActor($db, 'app', ['actor_id']))->actAs(['actor_id' => (string) $userId], $work)` *(dev)* |
+| Reuse connections | `persistent: true` in `database:` *(3.17)*; RLS reads `nullif(current_setting('app.actor_id', true), '')` |
+| RLS actor | `(new DatabaseActor($db, 'app', ['actor_id']))->actAs(['actor_id' => (string) $userId], $work)` *(3.17)* |
 | Escape outside Latte | `e($value)` |
 | Own 413 page | `new MaxBodySizeMiddleware($max, onFailure: fn (Request $r, BodyTooLarge $b): ?Response => ...)` |
 | 404 for a missing record | `return $this->abort(404)` or `throw new RouteNotFoundException('project')` |
