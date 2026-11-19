@@ -19,7 +19,8 @@ passage says what `v0.14.1` does instead. Behaviour marked *(0.16)* arrived in
 `v0.16.0`; the same passage says what `v0.15.0` does instead when it changed
 behaviour (the `router:` section and `cache:warm` are new API).
 Behaviour marked *(3.17)* arrived in `v3.17.0`; the same passage says what
-`v0.16.0` does instead.
+`v0.16.0` does instead. Behaviour marked *(3.17.1)* arrived in `v3.17.1`; the
+same passage says what `v3.17.0` does instead.
 The framework's `CHANGELOG.md` lists each change with the fix to make. The
 boot-time error messages name their own fix: when one disagrees with this file,
 follow the message.
@@ -101,6 +102,7 @@ final class Kernel
         $config = Configuration::fromYamlFile($root . '/config.yml');
 
         // fromGlobals() does not read config.yml: pass the proxy settings and the body limit yourself.
+        // Without maxBodySize it reads 2 MB, and a larger body gets a 413 whatever max_body_size says.
         $request = Request::fromGlobals(
             trustedProxies: $config->security->trustedProxies,
             trustedHeaders: $config->security->trustedHeaders,
@@ -396,7 +398,9 @@ value (gotcha 3):
   `force_https` out together in local development.
 - Only declared keys are checked. `max_body_size` still defaults to `2097152`
   when you leave it out, but nothing enforces it unless `MaxBodySizeMiddleware`
-  is mounted: with no middleware, requests of any size reach your routes.
+  is mounted. Without it, `Request::fromGlobals()` still reads 2 MB at most and
+  the kernel answers a larger body with a 413 *(3.17.1)*; `fromGlobals(maxBodySize: 0)`
+  lets requests of any size reach your routes, as every call did on `v3.17.0`.
 - A middleware registered under a route name, or wrapped inside another
   middleware, does not count. When a protection really lives elsewhere (a
   reverse proxy, a wrapping middleware), say so:
@@ -454,10 +458,21 @@ defence: also set the web server's limit (`client_max_body_size`,
 `LimitRequestBody`). To answer yourself, pass `onFailure`
 (a `BodyTooLarge` carries `bytes` and `maxBytes`); returning `null` keeps the
 default.
-Give `Request::fromGlobals(maxBodySize: ...)` the same limit: without it the whole
-body is read into memory before this middleware can refuse it. With it, the raw
-input is read at most one byte past the limit, and a body over the limit arrives
-unparsed (empty, `isMalformed()` true). That covers `php://input` only: PHP reads a
+`Request::fromGlobals()` reads the raw input at most one byte past its read limit
+*(3.17.1)*: `maxBodySize` when given, 2 MB (`Request::MAX_BODY_SIZE_DEFAULT`)
+otherwise, the whole body only with an explicit `maxBodySize: 0`. On `v3.17.0` it read
+the whole body unless given a limit. A body over the read limit, or a declared
+`Content-Length` over it (nothing is read then), arrives truncated
+(`body()->isTruncated()` and `isMalformed()` true, unparsed) and never reaches a
+controller: a global `MaxBodySizeMiddleware` refuses it through `onFailure` whatever its
+own budget, and without one the kernel answers the same default 413 before any
+middleware. So give `fromGlobals(maxBodySize: ...)` the same limit as the middleware.
+When `max_body_size` is declared above the read limit, the truncated request is still
+refused, and a `ConfigurationException` naming the fix goes to `ExceptionEvent`
+listeners, then to your debugger (when unhandled exceptions are rethrown) or the error
+log (gotcha 20). Mount `MaxBodySizeMiddleware` before `CsrfMiddleware`: a CSRF check
+that runs first refuses a truncated form, whose token sits in the unread part, as a
+CSRF failure. The read limit saves memory on `php://input` only: PHP reads a
 form or an upload into `$_POST` and `$_FILES` itself, up to `post_max_size`, before
 `fromGlobals()` runs, so set `post_max_size` and the web server's limit to the same
 budget:
@@ -1765,8 +1780,10 @@ in:  (new SessionManager())->set('user_id', 7) before start()
 out: SessionException: Cannot write "user_id" to the session: no session is active. Run SessionMiddleware on this route, or call start(); in a test, pass an array to new SessionManager([]).
 ```
 
-**20. Behind a proxy, `fromGlobals()` needs the proxy list.** It never reads
-`security.trusted_proxies` on its own.
+**20. `fromGlobals()` needs the proxy list and the body limit.** It never reads
+`security.trusted_proxies` or `security.max_body_size` on its own. Without
+`maxBodySize` it reads 2 MB *(3.17.1)*, so an app that declares more refuses every
+body between 2 MB and its limit with a 413 (on `v3.17.0` it read every body whole).
 
 ```text
 in:  REMOTE_ADDR 10.0.0.5, X-Forwarded-For 203.0.113.9, X-Forwarded-Proto https; Request::fromGlobals(...)
@@ -1777,6 +1794,11 @@ in:  the same, plus X-Forwarded-Host "evil.example, app.example.com" (appended b
 out: host = app.example.com (0.14.1); evil.example on v0.14.0
 in:  the same, plus X-Forwarded-Host "evil.example, " and Host app.example.com
 out: host = app.example.com, the Host header (0.14.1); evil.example on v0.14.0
+in:  max_body_size: 8388608 with MaxBodySizeMiddleware, a 3 MB PUT; Request::fromGlobals() without maxBodySize
+out: 413, and in the error log (or your debugger when unhandled exceptions are rethrown):
+     Zephyrus: request body truncated below security.maxBodySize, request refused: Zephyrus\Core\Config\ConfigurationException: Request::fromGlobals() read the body with a limit of 2097152 bytes, but security.maxBodySize allows 8388608: pass maxBodySize: $config->security->maxBodySize to Request::fromGlobals().
+in:  the same with maxBodySize: $config->security->maxBodySize
+out: the controller receives the 3145728 bytes
 ```
 
 **21. A malformed JSON body reads as empty.** Check `isMalformed()` *(0.14)* before
