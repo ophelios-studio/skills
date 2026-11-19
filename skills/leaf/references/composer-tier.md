@@ -20,17 +20,28 @@ so Composer resolves `zephyrus-framework/core` and
 `composer update` and `composer require` work in the new project.
 
 From a Binary-tier site, `leaf eject` (one-way; refuses when
-`composer.json` exists unless `--force`). It writes `app/`, `bin/`,
-`vendor/`, `composer.json`, `composer.lock` and `README.md` (overwriting
-yours), plus two stray files, `.gitkeep` and `.staged`, to delete. It
-leaves `content/`, `config.yml`, `templates/`, `public/` and `dist/` alone.
-CLI v0.1.6 writes the `composer.json` of the template it embeds, which
-still has the `path` repositories (`../zephyrus2`,
-`../zephyrus-leaf-core`) of the maintainers' machines. Then fix three
-things:
+`composer.json` exists unless `--force`). CLI v0.1.7 writes `app/`, `bin/`,
+`vendor/`, `composer.json` and `composer.lock`, and merges the bundled
+`public/` into yours without overwriting: your `public/assets/css/app.css`,
+extra files and `README.md` are kept, and `public/index.php` is added. It
+also writes two stray files, `.gitkeep` and `.staged`, to delete. It leaves
+`content/`, `config.yml`, `templates/` and `dist/` alone. The
+`composer.json` has no `path` repositories (it requires leaf-core `@dev`
+from Packagist), so `composer install`, `composer update` and
+`composer build` work as shipped, and `composer dev` serves the pages.
 
-1. **`public/index.php` is missing** (eject never writes into `public/`),
-   so `composer dev` answers HTTP 500. Create it:
+One thing to do by hand: **`templates/` stops applying** to `composer
+build`, which renders `app/Views/` only. Move each override to the same
+relative path under `app/Views/`. Until then `leaf build` (which still
+works on an ejected project and still reads `templates/`) and `composer
+build` produce different sites.
+
+**A project ejected with CLI v0.1.6** differs: its `composer.json` keeps
+the maintainers' `path` repositories (`../zephyrus2`,
+`../zephyrus-leaf-core`), `README.md` was overwritten, and `public/index.php`
+was never written. Fix it by hand:
+
+1. Create `public/index.php`, or `composer dev` answers HTTP 500:
 
    ```php
    <?php
@@ -43,14 +54,10 @@ things:
    (new \App\Models\Core\Application())->run();
    ```
 
-2. **`templates/` stops applying.** `composer build` renders `app/Views/`
-   only; move each override to the same relative path under `app/Views/`.
-   Until then `leaf build` (which still works on an ejected project) and
-   `composer build` produce different sites.
-3. **`composer update` and `composer require` fail** on those path
-   repositories (`In PathRepository.php line 163`): run
-   `composer config --unset repositories` first.
-   `composer install` works as shipped (the lock and `vendor/` match).
+2. Run `composer config --unset repositories` before `composer update` or
+   `composer require`, which otherwise fail with `In PathRepository.php line
+   163` (`composer install` works as shipped).
+3. Restore your `README.md` from version control.
 
 ## Application (`Leaf\Kernel`)
 
@@ -122,10 +129,11 @@ public function old(): Response
 - **Pass `requestPath`** so the canonical snippet in `SKILL.md` gets the
   right URL.
 - **A route with a `{parameter}` is never built on its own**: list the
-  concrete paths with `addPaths()`. leaf-core `main` builds `addPaths()`
-  paths in every locale of a multi-locale site. A leaf-core that predates
-  the fix (the one inside CLI v0.1.6) drops them: declare a concrete route
-  per page instead, those build in every locale.
+  concrete paths with `addPaths()`. leaf-core `1a2c175` and later (CLI
+  v0.1.7) builds `addPaths()` paths in every locale of a multi-locale
+  site. An older leaf-core (CLI v0.1.6) drops them: run `composer update`,
+  or declare a concrete route per page instead, those build in every
+  locale.
 - A redirect becomes a meta-refresh page (`/old-page/index.html` pointing
   at `/blog`).
 

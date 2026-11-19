@@ -1,6 +1,6 @@
 ---
 name: leaf
-description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.7): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what eject leaves broken.
+description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.7): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).
 ---
 
 # Zephyrus Leaf
@@ -38,7 +38,7 @@ the binary's.
 `composer.json` plus `app/` means Composer tier. Otherwise Binary tier.
 
 **Composer tier details** (starting a project, `leaf eject` and what it
-leaves broken, `Application`, `bin/build.php`, `BuildCommand`,
+leaves to do by hand, `Application`, `bin/build.php`, `BuildCommand`,
 `StaticSiteBuilder`, `ContentLoader`, `composer dev`): read
 [`references/composer-tier.md`](references/composer-tier.md) when the
 project has `composer.json`, or before running `leaf eject`.

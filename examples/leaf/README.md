@@ -1,7 +1,7 @@
 # Leaf example
 
 Minimal Binary-tier Leaf project: one Markdown page and the two template
-overrides most real sites need. Verified with the leaf CLI v0.1.6.
+overrides most real sites need. Verified with the leaf CLI v0.1.7.
 
 ## Layout
 
@@ -38,8 +38,8 @@ Or from anywhere: `leaf build --dir examples/leaf`. The output lands in
   the bundled theme and framework come from the binary.
 - **Front matter** (`title`, `order`, `description`) driving the sidebar
   and the meta description.
-- **`leaf.sections`** ordering the sidebar (a section folder it does not
-  list would build but stay out of the sidebar).
+- **`leaf.sections`** ordering and labelling the sidebar (a section folder
+  it does not list still shows, after the declared ones).
 - **Exact-path overrides**: `templates/layouts/docs.latte` and
   `templates/partials/head.latte` replace the bundled files of the same
   path. Their `{include}` paths are relative to the including file
