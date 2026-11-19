@@ -399,8 +399,9 @@ value (gotcha 3):
 - Only declared keys are checked. `max_body_size` still defaults to `2097152`
   when you leave it out, but nothing enforces it unless `MaxBodySizeMiddleware`
   is mounted. Without it, `Request::fromGlobals()` still reads 2 MB at most and
-  the kernel answers a larger body with a 413 *(3.17.1)*; `fromGlobals(maxBodySize: 0)`
-  lets requests of any size reach your routes, as every call did on `v3.17.0`.
+  the kernel answers a larger body, a chunked multipart form included, with a 413
+  *(3.17.1)*; `fromGlobals(maxBodySize: 0)` lets requests of any size reach your
+  routes, read whole into memory, as every call did on `v3.17.0`.
 - A middleware registered under a route name, or wrapped inside another
   middleware, does not count. When a protection really lives elsewhere (a
   reverse proxy, a wrapping middleware), say so:
@@ -461,20 +462,22 @@ default.
 `Request::fromGlobals()` reads the raw input at most one byte past its read limit
 *(3.17.1)*: `maxBodySize` when given, 2 MB (`Request::MAX_BODY_SIZE_DEFAULT`)
 otherwise, the whole body only with an explicit `maxBodySize: 0`. On `v3.17.0` it read
-the whole body unless given a limit. A body over the read limit, or a declared
-`Content-Length` over it (nothing is read then), arrives truncated
-(`body()->isTruncated()` and `isMalformed()` true, unparsed) and never reaches a
+the whole body unless given a limit. A body over the read limit, a declared
+`Content-Length` over it (nothing is read then), or a multipart form PHP parsed without
+one (chunked) whose fields and files measure over it, arrives truncated
+(`body()->isTruncated()` and `isMalformed()` true, fields empty; uploaded files stay listed) and never reaches a
 controller: a global `MaxBodySizeMiddleware` refuses it through `onFailure` whatever its
-own budget, and without one the kernel answers the same default 413 before any
-middleware. So give `fromGlobals(maxBodySize: ...)` the same limit as the middleware.
+own budget, with the limit that cut it (the smaller positive one of its budget and the read limit)
+as `$refusal->maxBytes`, and without one the kernel answers the same default 413 before
+any middleware. So give `fromGlobals(maxBodySize: ...)` the same limit as the middleware.
 When `max_body_size` is declared above the read limit, the truncated request is still
 refused, and a `ConfigurationException` naming the fix goes to `ExceptionEvent`
-listeners, then to your debugger (when unhandled exceptions are rethrown) or the error
-log (gotcha 20). Mount `MaxBodySizeMiddleware` before `CsrfMiddleware`: a CSRF check
-that runs first refuses a truncated form, whose token sits in the unread part, as a
-CSRF failure. The read limit saves memory on `php://input` only: PHP reads a
+listeners, then to your debugger (when unhandled exceptions are rethrown) or, as one
+line, the error log (gotcha 20). Mount `MaxBodySizeMiddleware` before `CsrfMiddleware`:
+a truncated form reads as empty, so a CSRF check that runs first answers its missing
+token with a 403, not the 413. The read limit saves memory on `php://input` only: PHP reads a
 form or an upload into `$_POST` and `$_FILES` itself, up to `post_max_size`, before
-`fromGlobals()` runs, so set `post_max_size` and the web server's limit to the same
+`fromGlobals()` runs, so set `post_max_size`, `upload_max_filesize` (PHP rejects a larger file itself: error 1, size 0) and the web server's limit to the same
 budget:
 
 ```php
@@ -1784,6 +1787,9 @@ out: SessionException: Cannot write "user_id" to the session: no session is acti
 `security.trusted_proxies` or `security.max_body_size` on its own. Without
 `maxBodySize` it reads 2 MB *(3.17.1)*, so an app that declares more refuses every
 body between 2 MB and its limit with a 413 (on `v3.17.0` it read every body whole).
+An app that takes bodies over 2 MB without declaring `max_body_size` (an upload limit
+set only by `post_max_size`) gets the same 413 with no report: pass the limit it
+accepts (`maxBodySize: 0` reads any body whole into memory).
 
 ```text
 in:  REMOTE_ADDR 10.0.0.5, X-Forwarded-For 203.0.113.9, X-Forwarded-Proto https; Request::fromGlobals(...)
@@ -1795,8 +1801,11 @@ out: host = app.example.com (0.14.1); evil.example on v0.14.0
 in:  the same, plus X-Forwarded-Host "evil.example, " and Host app.example.com
 out: host = app.example.com, the Host header (0.14.1); evil.example on v0.14.0
 in:  max_body_size: 8388608 with MaxBodySizeMiddleware, a 3 MB PUT; Request::fromGlobals() without maxBodySize
-out: 413, and in the error log (or your debugger when unhandled exceptions are rethrown):
-     Zephyrus: request body truncated below security.maxBodySize, request refused: Zephyrus\Core\Config\ConfigurationException: Request::fromGlobals() read the body with a limit of 2097152 bytes, but security.maxBodySize allows 8388608: pass maxBodySize: $config->security->maxBodySize to Request::fromGlobals().
+out: 413 (onFailure gets maxBytes 2097152), and this one line in the error log (or your
+     debugger when unhandled exceptions are rethrown):
+     Zephyrus: Request::fromGlobals() read the body with a limit of 2097152 bytes, but security.maxBodySize allows 8388608: pass maxBodySize: $config->security->maxBodySize to Request::fromGlobals().
+in:  the same as a 3 MB multipart upload sent chunked (no Content-Length), with upload_max_filesize of at least 3M (at PHP's default 2M the file arrives with error 1 and the controller answers 200)
+out: the same 413 and line (3.17.1); on v3.17.0 the controller received the file
 in:  the same with maxBodySize: $config->security->maxBodySize
 out: the controller receives the 3145728 bytes
 ```
