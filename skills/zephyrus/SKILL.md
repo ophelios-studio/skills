@@ -52,7 +52,7 @@ Where each class lives (the PSR-4 root is `Zephyrus\` under `src/Zephyrus/`):
 
 | Namespace | Classes |
 | --- | --- |
-| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` *(0.14)* |
+| `Zephyrus\Core` | `ApplicationBuilder`, `Application`, `App`, `ExceptionEvent` *(0.14)*, `RequestEvent` |
 | `Zephyrus\Core\Config` | `Configuration`, `ConfigSection`, `ConfigurationException`, `DatabaseConfig`, `Environment` |
 | `Zephyrus\Http` | `Request`, `Response`, `MiddlewareInterface` |
 | `Zephyrus\Routing` | `Router` |
@@ -483,8 +483,8 @@ form or an upload into `$_POST` and `$_FILES` itself, up to `post_max_size`, bef
 `post_max_size` as its limit when that is smaller than `maxBodySize` *(3.17.2)*: past it PHP
 drops the fields and files (or keeps a cut prefix of a chunked body), so the form arrives
 truncated and gets the 413 with `post_max_size` as `$refusal->maxBytes`, and the kernel
-reports it with its own fix. On `v3.17.1` it reached the controller empty, and a CSRF
-route answered 403. A JSON body, a `PUT` and a POST without `Content-Type` keep
+reports it with its own fix. On `v3.17.1` it reached the controller empty or cut.
+A JSON body, a `PUT` and a POST without `Content-Type` keep
 `maxBodySize`: PHP leaves them whole in `php://input`. So set `post_max_size`,
 `upload_max_filesize` (PHP rejects a larger file itself: error 1, size 0) and the web server's limit to the same
 budget:
@@ -500,20 +500,41 @@ $builder = $builder->withMiddleware(new MaxBodySizeMiddleware(
 A body that stops short of its `Content-Length` *(3.17.2)* (Apache gives up on a stalled
 body after `RequestReadTimeout`, and mod_php still runs the script with the blocks it
 read), or a multipart body holding a file PHP ended without its boundary
-(`UPLOAD_ERR_PARTIAL`, error 3), reads as empty: no fields, `raw()` is `''`,
-`isMalformed()` true, `isTruncated()` false, files still listed. Nothing refuses it for
-you: under `CsrfMiddleware` the token went with the fields (403); on a route without CSRF,
-check `isMalformed()` before acting, or a save that deletes what the list no longer
-carries deletes the rest. On `v3.17.1` the fields parsed from the fragment reached the
-controller. PHP leaves no raw body for a multipart POST, so one cut inside its text fields,
-with no file cut, cannot be told from a complete one: put the `_csrf_token` field last in
-a multipart form, so a cut loses the token and the request gets the 403.
+(`UPLOAD_ERR_PARTIAL`, error 3), is incomplete: `fromGlobals()` empties it (no fields,
+`raw()` is `''`, `isMalformed()` true, `isTruncated()` false, files still listed) and the
+kernel refuses it with a 400 `Request body incomplete.` (`text/plain` when `Accept` lists
+`text/html`, JSON otherwise) before any middleware or controller, a CSRF token sent in a
+header included. On `v3.17.1` the fields parsed from the fragment reached the controller.
+A body sent with a `Content-Encoding` is not compared with its length (under Apache's
+`SetInputFilter DEFLATE`, `Content-Length` counts the compressed bytes). For your own
+page, answer it from a `RequestEvent` listener, which runs before the refusal:
+
+```php
+$events->addListener(RequestEvent::class, static function (RequestEvent $event): void {
+    $body = $event->getRequest()->body();
+    if ($body->isMalformed() && !$body->isTruncated() && $body->raw() === '') { // incomplete
+        $event->setResponse(Response::html('<h1>Your form did not arrive whole. Send it again.</h1>', 400));
+    }
+});
+```
+
+Known limits: a chunked body cut short passes as complete (browsers send a
+`Content-Length`; API clients chunk), and so does a multipart POST cut in or between its
+text fields, since PHP leaves no raw body to compare. A body with a `Content-Encoding` cut
+short is not detected either: no 400, no `isMalformed()`, the fields (or `[]`) reach the
+controller. With the `_csrf_token` field in a multipart body, put it last, so that such a
+cut loses the token and `CsrfMiddleware` refuses the request. With the token in a header
+(`fetch` and `FormData`), that cut is invisible and CSRF does not catch it: the controller
+sees partial fields, so validate every required field and never treat a missing field as
+"delete it".
+A chunked multipart whose file PHP cut at `post_max_size` gets this 400, not the 413.
 
 ```text
 in:  POST, Content-Type: application/x-www-form-urlencoded, Content-Length: 40, body title=Draft&items[]=1 (fromGlobals)
-out: body()->all() = [], raw() = '', isMalformed() = true, isTruncated() = false
+out: body()->all() = [], raw() = '', isMalformed() = true, isTruncated() = false, and the kernel answers
+     400 {"error":"Request body incomplete."} before any middleware
 in:  multipart POST whose $_FILES['scan'] has error 3 (UPLOAD_ERR_PARTIAL)
-out: body()->all() = [], isMalformed() = true, file('scan')->errorCode = 3
+out: body()->all() = [], isMalformed() = true, file('scan')->errorCode = 3, and the same 400
 in:  post_max_size 64K, max_body_size: 1048576, MaxBodySizeMiddleware(1048576), fromGlobals(maxBodySize: 1048576), a 100 KB form POST under Apache or php -S
 out: 413 (onFailure gets maxBytes 65536, readLimit() = 65536), and this one line in the error log (or your
      debugger when unhandled exceptions are rethrown):
@@ -1473,7 +1494,9 @@ one. The same process-wide session is why a GET followed by a POST shares one
 CSRF token.
 
 `Request::fromArray()` takes the decoded body in `body:`; it does not decode a
-JSON `rawBody:` (gotcha 21).
+JSON `rawBody:` (gotcha 21). A request built with `Request::fromGlobals()` and a
+`rawBody:` shorter than its `CONTENT_LENGTH` is incomplete and gets the 400 *(3.17.2)*:
+give `CONTENT_LENGTH` the length of `rawBody:`, or leave it out.
 
 With `application.debug: true`, an exception nothing answers leaves `handle()`
 in a test, so PHPUnit reports it whole *(0.14.1)*; with debug off the test gets the
