@@ -478,7 +478,15 @@ line, the error log (gotcha 20). Mount `MaxBodySizeMiddleware` before `CsrfMiddl
 a truncated form reads as empty, so a CSRF check that runs first answers its missing
 token with a 403, not the 413. The read limit saves memory on `php://input` only: PHP reads a
 form or an upload into `$_POST` and `$_FILES` itself, up to `post_max_size`, before
-`fromGlobals()` runs, so set `post_max_size`, `upload_max_filesize` (PHP rejects a larger file itself: error 1, size 0) and the web server's limit to the same
+`fromGlobals()` runs. Under a web server (not the CLI), a form POST
+(`application/x-www-form-urlencoded` or `multipart/form-data`) is therefore read with
+`post_max_size` as its limit when that is smaller than `maxBodySize` *(3.17.2)*: past it PHP
+drops the fields and files (or keeps a cut prefix of a chunked body), so the form arrives
+truncated and gets the 413 with `post_max_size` as `$refusal->maxBytes`, and the kernel
+reports it with its own fix. On `v3.17.1` it reached the controller empty, and a CSRF
+route answered 403. A JSON body, a `PUT` and a POST without `Content-Type` keep
+`maxBodySize`: PHP leaves them whole in `php://input`. So set `post_max_size`,
+`upload_max_filesize` (PHP rejects a larger file itself: error 1, size 0) and the web server's limit to the same
 budget:
 
 ```php
@@ -487,6 +495,31 @@ $builder = $builder->withMiddleware(new MaxBodySizeMiddleware(
     onFailure: fn (Request $request, BodyTooLarge $refusal): ?Response
         => Response::html('<h1>That file is too large (limit ' . $refusal->maxBytes . ' bytes).</h1>', 413),
 ));
+```
+
+A body that stops short of its `Content-Length` *(3.17.2)* (Apache gives up on a stalled
+body after `RequestReadTimeout`, and mod_php still runs the script with the blocks it
+read), or a multipart body holding a file PHP ended without its boundary
+(`UPLOAD_ERR_PARTIAL`, error 3), reads as empty: no fields, `raw()` is `''`,
+`isMalformed()` true, `isTruncated()` false, files still listed. Nothing refuses it for
+you: under `CsrfMiddleware` the token went with the fields (403); on a route without CSRF,
+check `isMalformed()` before acting, or a save that deletes what the list no longer
+carries deletes the rest. On `v3.17.1` the fields parsed from the fragment reached the
+controller. PHP leaves no raw body for a multipart POST, so one cut inside its text fields,
+with no file cut, cannot be told from a complete one: put the `_csrf_token` field last in
+a multipart form, so a cut loses the token and the request gets the 403.
+
+```text
+in:  POST, Content-Type: application/x-www-form-urlencoded, Content-Length: 40, body title=Draft&items[]=1 (fromGlobals)
+out: body()->all() = [], raw() = '', isMalformed() = true, isTruncated() = false
+in:  multipart POST whose $_FILES['scan'] has error 3 (UPLOAD_ERR_PARTIAL)
+out: body()->all() = [], isMalformed() = true, file('scan')->errorCode = 3
+in:  post_max_size 64K, max_body_size: 1048576, MaxBodySizeMiddleware(1048576), fromGlobals(maxBodySize: 1048576), a 100 KB form POST under Apache or php -S
+out: 413 (onFailure gets maxBytes 65536, readLimit() = 65536), and this one line in the error log (or your
+     debugger when unhandled exceptions are rethrown):
+     Zephyrus: PHP's post_max_size (65536 bytes) is below security.maxBodySize (1048576): PHP drops or cuts the fields and files of a form POST past it before the application runs. Raise post_max_size to at least security.maxBodySize.
+in:  the same as a 100 KB JSON POST
+out: the controller receives it (readLimit() = 1048576)
 ```
 
 ## Routing
