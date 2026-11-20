@@ -10,9 +10,10 @@ Zephyrus is a PHP 8.4+ framework: attribute routing, immutable `Request` and
 middleware whose wiring is checked at boot, Latte views, and a thin PDO layer
 for PostgreSQL. No ORM, no migrations.
 
-Everything below was run against `v3.17.0`, the release a bare `composer
-require` installs. An API marked *(0.14)* is new in `v0.14.0`: `v0.13.0`
-lacks it, predates many breaking changes, and does not run the bootstrap below.
+Everything below was run against `v3.17.0`, and the passages marked *(3.17.1)*
+against `v3.17.1`, the release a bare `composer require` installs. An API
+marked *(0.14)* is new in `v0.14.0`: `v0.13.0` lacks it, predates many
+breaking changes, and does not run the bootstrap below.
 Behaviour marked *(0.14.1)* arrived in `v0.14.1`; the same passage says what
 `v0.14.0` does instead. Behaviour marked *(0.15)* arrived in `v0.15.0`; the same
 passage says what `v0.14.1` does instead. Behaviour marked *(0.16)* arrived in
