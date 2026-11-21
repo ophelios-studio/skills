@@ -1,6 +1,6 @@
 ---
 name: leaf
-description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.7): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).
+description: Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.8): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).
 ---
 
 # Zephyrus Leaf
@@ -9,9 +9,9 @@ A static site generator for documentation, landings and blogs: Markdown
 plus Latte templates in, plain HTML in `dist/` out. Every page is rendered
 through a real Zephyrus application, then written to disk.
 
-Verified against the leaf CLI **v0.1.7** (latest release), which embeds
-leaf-core `1a2c175` (`main`), `zephyrus-framework/core` v3.17.0 and the
-`zephyrus-framework/leaf` template `511176b` (`main`). Traps below are
+Verified against the leaf CLI **v0.1.8** (latest release), which embeds
+leaf-core `6caeb37` (`main`), `zephyrus-framework/core` v3.18.0 and the
+`zephyrus-framework/leaf` template `2367a24` (`main`). Traps below are
 checked with that binary; the Composer tier runs the same leaf-core and
 template when `composer update` resolves those commits. leaf-core has no
 tags; Packagist serves only `dev-main`. `composer show
@@ -50,7 +50,7 @@ curl -fsSL https://leaf.ophelios.com/install.sh | sh
 ```
 
 The script installs the latest release to `/usr/local/bin`. Override with
-`LEAF_VERSION=v0.1.7` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
+`LEAF_VERSION=v0.1.8` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
 `curl -fsSL https://leaf.ophelios.com/install.sh | LEAF_PREFIX="$HOME/bin" sh`.
 
 On macOS take v0.1.7 or later: the darwin binaries of v0.1.6 carry no
@@ -217,7 +217,7 @@ Bundled files and what they receive:
 | File | Used for | Variables (besides the globals) |
 |------|----------|---------------------------------|
 | `docs/page.latte` (layout `layouts/docs.latte`) | every Markdown page | `title`, `pageDescription`, `section`, `slug`, `content`, `sidebar`, `toc`, `prevPage`, `nextPage` |
-| `landing.latte` (layout `layouts/landing.latte`) | `/` | `title` (= `leaf.name`) |
+| `landing.latte` (layout `layouts/landing.latte`) | `/` | `title` (= `leaf.name`), `firstPage` (the first page entry, or null; since v0.1.8) |
 | `404.latte` | `/404`, written to `dist/404.html` | `title` |
 | `pages/{name}.latte` | custom pages | `title`, `pageTitle`, `pagePath` |
 | `partials/head.latte`, `partials/nav.latte` | both layouts | inherited |
@@ -363,7 +363,7 @@ Locale-aware links in your own templates:
 <a href="{$localePrefix}/guide/intro">Guide</a>
 ```
 
-Search and custom pages on multi-locale sites (CLI v0.1.7):
+Search and custom pages on multi-locale sites (CLI v0.1.8):
 
 - **Custom pages and every `addPaths()` path are built in every locale**
   (see Custom pages). CLI v0.1.6 built none of them.
@@ -376,9 +376,19 @@ Search and custom pages on multi-locale sites (CLI v0.1.7):
   that adds the locale prefix now produces `/fr/fr/guide/intro`, and a hook
   that resolves `dirname(<search.json>) . url` points at a file that does
   not exist: use `<dist> . url`, and `url + '/'` as the link.
-- Sidebar links on a non-default locale's pages carry no `/fr` prefix
-  (`/guide/intro`): they leave the locale, and a page that exists only in
-  `content/fr/` gets a dead link there (same on v0.1.6 and v0.1.7).
+- **Since CLI v0.1.8 the bundled theme keeps the locale**: on a non-default
+  locale, the sidebar, previous/next, logo, landing and 404 links carry the
+  prefix (`/fr/guide/intro`, `/docs/fr/guide/intro` with a base URL), and a
+  page that exists only in `content/fr/` is linked. On v0.1.7 and earlier
+  they had no prefix and left the locale.
+- **An item's `url` (sidebar, `prevPage`, `nextPage`) has no locale
+  prefix**: it is the base URL plus `/section/slug` (`/docs/guide/intro`).
+  Putting the prefix in front of it works only with an empty base URL
+  (`/fr/docs/guide/intro` otherwise). An overridden partial builds its
+  links like the bundled ones, with the `$dl` and `$localePrefix` lines above:
+  `{$leafBaseUrl}{$localePrefix}/{$item['section']}/{$item['slug']}`.
+  Overrides need no change on upgrade: they replace the bundled partial
+  whole, and `url`, `section` and `slug` did not change.
 - `composer dev` ignores `content/{locale}/` (the static build applies it):
   check translated Markdown in the build, not in the Composer dev server.
 
@@ -456,14 +466,14 @@ root, where most hosts look for it. Two proven patterns:
   this way for GitHub Pages):
 
 ```bash
-LEAF_VERSION=v0.1.7
+LEAF_VERSION=v0.1.8
 curl -fsSL "https://github.com/ophelios-studio/zephyrus-leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
-echo "efcd45bddfcf184fdb6affa9260fad1f7daf2b3afe436286b5a08852916549a6  $RUNNER_TEMP/leaf" | sha256sum --check --strict
+echo "3d47d23c1a1d8327be130170dc63b1adfdd4d2e5461c7fa4cbce8c8768d47972  $RUNNER_TEMP/leaf" | sha256sum --check --strict
 chmod +x "$RUNNER_TEMP/leaf"
 APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 ```
 
-  The checksum is the v0.1.7 `leaf-linux-amd64` line of the release's
+  The checksum is the v0.1.8 `leaf-linux-amd64` line of the release's
   `checksums.txt`; take the new one when you bump the version.
 
 ## Key rules
@@ -477,7 +487,7 @@ APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 - **Never build canonical URLs from `$requestPath` alone**: use the
   `$section`/`$slug`/`$pagePath` snippet above.
 - **`production_url` without trailing slash** turns on sitemap and robots.
-- **Search URLs in a non-default locale already carry the prefix** (CLI
+- **Search URLs in a non-default locale already carry the prefix** (since CLI
   v0.1.7): never prefix them again.
 - **Build production with `APP_DEBUG=false`.**
 - **Post-build steps go in `leaf.post_build`** on either tier; write to
