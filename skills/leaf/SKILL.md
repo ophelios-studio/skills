@@ -335,6 +335,10 @@ localization:
 - The default locale builds to the root (`dist/guide/intro/`), every other
   one under `/{locale}/` (`dist/fr/guide/intro/`). The default locale never
   has a prefix.
+- **Every `supported_locales` entry becomes a path and a link**, so it must be a
+  lowercase code such as `fr` or `fr-ca` (2 or 3 letters, optional hyphenated
+  subtags). Anything else (`../x`, `/x.example`, `FR`) stops `leaf build` and
+  the dev server at startup with a `ConfigurationException`; nothing is written.
 - **Content falls back per page.** For `fr`, `content/fr/{section}/{slug}.md`
   wins over `content/{section}/{slug}.md`; untranslated pages build from
   the default file. A section that exists only under `content/fr/` builds
@@ -342,7 +346,9 @@ localization:
   named after a supported locale are never treated as sections.
 - Templates get `$currentLocale`, `$defaultLocale` and `$supportedLocales`
   (only when `locale_path` is set) and the `localize()` function, alias
-  `i18n()`.
+  `i18n()`. `$localePrefix` is always defined: `''` for the default locale, a
+  single-locale site or no `locale_path`, `'/fr'` otherwise; a variable the
+  render passes, or a `{var $localePrefix}` in the template, wins.
 - Strings: every `locale/{locale}/*.json` is merged into one tree (files
   read alphabetically, later wins). `{localize('nav.home')}` reads
   `{"nav": {"home": "Home"}}`. Placeholders use braces:
@@ -356,9 +362,6 @@ localization:
 Locale-aware links in your own templates:
 
 ```latte
-{var $dl = $defaultLocale ?? 'en'}
-{var $localePrefix = ($currentLocale ?? $dl) === $dl ? '' : '/' . $currentLocale}
-
 <a href="{$localePrefix}/">Home</a>
 <a href="{$localePrefix}/guide/intro">Guide</a>
 ```
@@ -385,12 +388,14 @@ Search and custom pages on multi-locale sites (CLI v0.1.8):
   prefix**: it is the base URL plus `/section/slug` (`/docs/guide/intro`).
   Putting the prefix in front of it works only with an empty base URL
   (`/fr/docs/guide/intro` otherwise). An overridden partial builds its
-  links like the bundled ones, with the `$dl` and `$localePrefix` lines above:
+  links like the bundled ones, with `$localePrefix`:
   `{$leafBaseUrl}{$localePrefix}/{$item['section']}/{$item['slug']}`.
   Overrides need no change on upgrade: they replace the bundled partial
   whole, and `url`, `section` and `slug` did not change.
-- `composer dev` ignores `content/{locale}/` (the static build applies it):
-  check translated Markdown in the build, not in the Composer dev server.
+- `composer dev` serves `/{locale}/...` and `content/{locale}/` for a
+  declared non-default locale, like the build. Any other first segment
+  (`/ab/x`, or the default locale's own `/en/x`) is not stripped: it is a 404,
+  as in `dist/`.
 
 ## SEO
 
