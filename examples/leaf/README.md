@@ -61,4 +61,4 @@ Or from anywhere: `leaf build --dir examples/leaf`. The output lands in
 Multi-locale content (`content/fr/...`, `locale/fr/*.json`), custom pages
 (`templates/pages/about.latte`) and `leaf.post_build` hooks. For a real
 multi-locale site with SEO overrides and a sitemap hook, see
-https://github.com/ophelios-studio/zephyrus-site.
+https://github.com/zephyrus-framework/site.

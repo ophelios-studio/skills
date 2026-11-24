@@ -2124,7 +2124,7 @@ out: DatabaseException: Database refuses a persistent PDO, whose session would c
 
 ## References
 
-- Framework: https://github.com/ophelios-studio/zephyrus-core (`CHANGELOG.md`
+- Framework: https://github.com/zephyrus-framework/core (`CHANGELOG.md`
   lists every breaking change since `v0.13.0` with its fix)
 - Packagist: https://packagist.org/packages/zephyrus-framework/core
 - Latte: https://latte.nette.org/

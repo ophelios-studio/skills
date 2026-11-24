@@ -462,12 +462,12 @@ root, where most hosts look for it. Two proven patterns:
 - **Commit `dist/`** and let the host deploy the branch (leaf.ophelios.com
   runs this way on DigitalOcean App Platform). Rebuild before every commit.
 - **Build in CI with a pinned release** (the public
-  [zephyrus-site](https://github.com/ophelios-studio/zephyrus-site) builds
+  [zephyrus-site](https://github.com/zephyrus-framework/site) builds
   this way for GitHub Pages):
 
 ```bash
 LEAF_VERSION=v0.1.8
-curl -fsSL "https://github.com/ophelios-studio/zephyrus-leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
+curl -fsSL "https://github.com/zephyrus-framework/leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
 echo "3d47d23c1a1d8327be130170dc63b1adfdd4d2e5461c7fa4cbce8c8768d47972  $RUNNER_TEMP/leaf" | sha256sum --check --strict
 chmod +x "$RUNNER_TEMP/leaf"
 APP_DEBUG=false "$RUNNER_TEMP/leaf" build
@@ -498,11 +498,11 @@ APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 ## References
 
 - Docs: https://leaf.ophelios.com
-- CLI: https://github.com/ophelios-studio/zephyrus-leaf-cli (releases carry
+- CLI: https://github.com/zephyrus-framework/leaf-cli (releases carry
   the binaries and `checksums.txt`)
-- Core library: https://github.com/ophelios-studio/zephyrus-leaf-core
-- Composer template: https://github.com/ophelios-studio/zephyrus-leaf
+- Core library: https://github.com/zephyrus-framework/leaf-core
+- Composer template: https://github.com/zephyrus-framework/leaf
 - A real multi-locale Binary-tier site with SEO overrides and a sitemap
-  hook: https://github.com/ophelios-studio/zephyrus-site
+  hook: https://github.com/zephyrus-framework/site
 - In this repository: `examples/leaf/`, a minimal Binary-tier site with
   the layout and head overrides above (no em-dash, canonical, hreflang).
