@@ -224,6 +224,19 @@ Use short, medium, long, full or an ICU pattern.` On `v0.16.0` `none` printed
 ICU's fallback, a date and a time such as `20260310 02:30 PM`, even from
 `time()`.
 
+`supported_locales` is an allowlist, and an empty one accepts every locale. The
+boot refuses *(3.18.1)* what would empty it unnoticed: a declared `null` (`~`, an
+empty value, or `!env APP_LOCALE` unset without a default, so write
+`!env APP_LOCALE, fr`), an entry with a comma (a `!env LOCALES` of `fr,en` is one
+entry, so use list items), an entry that is not a locale tag (`-`, `fr;en`, `fr en`,
+`*`, more than 35 bytes), a list of only null or blank items, and a value that is
+neither a string nor a list. Example: `Configuration section 'localization' field
+'supportedLocales[1]' has invalid value "fr,en": must be one locale; use list
+items, not a comma inside one item.` Only a missing key and `[]` accept every
+locale. `withSupportedLocales()` throws an `InvalidArgumentException` for the same
+lists (`null` entries included), and trims and lower-cases like the config; so does
+the per-call `$supportedLocales` of `transFromRequest()` and `resolveLocaleFromRequest()`.
+
 ```yaml
 application:
   environment: !env APP_ENV, production  # prod/production, stage/staging, test/testing, dev/development/local
