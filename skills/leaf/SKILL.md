@@ -370,7 +370,8 @@ localization:
 - Templates get `$currentLocale`, `$defaultLocale`, `$supportedLocales` and
   `$localePrefix`, and the `localize()` function, alias `i18n()`, in the
   bundled templates and in overridden ones. Since CLI v0.1.10 they are always
-  defined: `$supportedLocales` is `[]` on a single-locale site, even with no
+  defined: `$supportedLocales` is the configured list (`["en"]` for
+  `supported_locales: ["en"]`), `[]` when none is set, as with no
   `localization` section, and `$localePrefix` is `''` for the default locale or
   a single-locale site, `'/fr'` otherwise. A `{var $localePrefix}` in a template
   still wins. On CLI v0.1.8 and older `$localePrefix` is undefined in a template
