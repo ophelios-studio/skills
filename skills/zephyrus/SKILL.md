@@ -236,6 +236,13 @@ items, not a comma inside one item.` Only a missing key and `[]` accept every
 locale. `withSupportedLocales()` throws an `InvalidArgumentException` for the same
 lists (`null` entries included), and trims and lower-cases like the config; so does
 the per-call `$supportedLocales` of `transFromRequest()` and `resolveLocaleFromRequest()`.
+The default locale is refused the same way when it is not a locale tag, in
+`localization.locale` (a declared `null` too: `locale: ~`, or a `!env` left unset
+without a default) and in the `$defaultLocale` of `withLocaleLoader()`,
+`withJsonLocales()`, `withJsonLocaleLayers()`, `withFallbackLoaders()` and, for a
+hand-built config, `withLocalizationConfig()` *(3.18.1)*. The builder does not trim
+the value: `' fr'` is refused, while the config trims it. Example:
+`withJsonLocales(): $defaultLocale " fr" is refused: must be a locale tag, such as fr or pt-BR.`
 
 ```yaml
 application:
