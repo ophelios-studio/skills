@@ -16,13 +16,13 @@ composer build --working-dir=my-site
 ```
 
 It works as is, with no version argument: Composer installs the latest
-stable template (v0.1.11), and resolves `zephyrus-framework/leaf-core`
-(v0.1.11) and `zephyrus-framework/core` (v3.18.0) from Packagist. The
+stable template (v0.1.12), and resolves `zephyrus-framework/leaf-core`
+(v0.1.12) and `zephyrus-framework/core` (v3.18.0) from Packagist. The
 template's `composer.json` has no `path` repositories, so `composer
 update` and `composer require` work in the new project.
 
 From a Binary-tier site, `leaf eject` (one-way; refuses when
-`composer.json` exists unless `--force`). CLI v0.1.11 writes `app/`, `bin/`,
+`composer.json` exists unless `--force`). CLI v0.1.12 writes `app/`, `bin/`,
 `vendor/`, `composer.json` and `composer.lock`, and merges the bundled
 `public/` into yours without overwriting: your `public/assets/css/app.css`,
 extra files and `README.md` are kept, and `public/index.php` is added. It
@@ -87,8 +87,14 @@ final class Application extends Kernel
     protected function createController(string $class): object
     {
         return match ($class) {
-            DocsController::class => new DocsController($this->contentLoader, $this->searchIndexBuilder, $this->leafConfig),
-            PagesController::class => new PagesController($this->leafConfig),
+            DocsController::class => new DocsController(
+                $this->contentLoader,
+                $this->searchIndexBuilder,
+                $this->leafConfig,
+                $this->config->localization->locale,
+                array_values($this->config->localization->supportedLocales),
+            ),
+            PagesController::class => new PagesController($this->contentLoader),
             MyController::class => new MyController($this->contentLoader, $this->leafConfig),
             default => new $class(),
         };
@@ -96,6 +102,14 @@ final class Application extends Kernel
 }
 ```
 
+- The template's constructors changed in v0.1.12: `DocsController` takes the
+  default locale and the supported locales after `$leafConfig`, and
+  `PagesController` takes the `ContentLoader` instead of `LeafConfig`. Both
+  controllers and `Application` are your copies, so a project on its v0.1.11
+  files keeps building after `composer update` to leaf-core v0.1.12. Taking the
+  new controllers without the new `Application` stops the build: `Too few
+  arguments to function App\Controllers\DocsController::__construct(), 3
+  passed` on every page.
 - Overridable: `createController(string $class): object`,
   `registerControllers(Router $router): Router` (default: discover
   `App\Controllers` in `app/Controllers`).
@@ -190,7 +204,9 @@ exit($command->run());
 `elapsedMs`, `errors`, `outputDirectory`, `builtPages`, `isSuccessful()`,
 `summary()`.
 
-**`composer build` never cleans `dist/`**: a deleted page stays there.
+**`composer build` never cleans `dist/`**: a deleted page stays there, and
+so does a page you just added to `excludePatterns()`, in `search.json` too
+(leaf-core v0.1.12 indexes only pages whose `index.html` is in the output).
 `rm -rf dist && composer build` for a clean artifact.
 
 ## `StaticSiteBuilder` (lower level)
@@ -225,7 +241,8 @@ default strings and content.
 - `ParsedMarkdown`: `$html`, `$frontMatter`, `$toc` (`list<{id, text, level}>`),
   `meta('key', $default)`.
 - `MarkdownParser::parse(string)`, `SearchIndexBuilder::build()`
-  (`list<{title, section, url, excerpt, headings}>`).
+  (`list<{title, section, url, excerpt, headings, content}>`, `content` being
+  the page's full text since v0.1.12).
 
 ## `composer dev`
 
@@ -237,11 +254,13 @@ default strings and content.
   `/ab/x`) before routing, and the kernel keeps it only for a declared
   non-default locale: the strings switch and `content/{locale}/` overrides
   apply (leaf-core v0.1.9 and later), `/ab/x` is a 404, and a section named
-  `ui` or `api` is still served at `/ui/x`. `/{locale}/search.json` lists the
-  default locale's titles with unprefixed URLs here, unlike the build;
-- a refused `localization` setting (an invalid `supported_locales` entry)
-  answers with HTTP 500 and an empty body; the error is in the terminal
-  running `composer dev`;
+  `ui` or `api` is still served at `/ui/x`. `/{locale}/search.json` lists that
+  locale's pages with `/{locale}/` URLs, like the build (leaf-core v0.1.12;
+  v0.1.11 listed the default locale's), and a miss renders that locale's 404;
+- a refused configuration (an invalid `supported_locales` entry) answers
+  every request with HTTP 500 `text/plain` carrying the message, which is
+  also printed in the terminal running `composer dev` (leaf-core v0.1.12;
+  v0.1.11 answered with an empty body);
 - answers `/__dev/reload` with a hash of file times under `content/`,
   `app/Views/`, `public/assets/css/`, `public/assets/js/` and `src/` (not
   `locale/`);
