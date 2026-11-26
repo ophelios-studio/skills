@@ -1,6 +1,6 @@
 ---
 name: leaf
-description: 'Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.8): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).'
+description: 'Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.11, which embeds leaf-core v0.1.11 and zephyrus-framework/core v3.18.0): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).'
 ---
 
 # Zephyrus Leaf
@@ -9,20 +9,31 @@ A static site generator for documentation, landings and blogs: Markdown
 plus Latte templates in, plain HTML in `dist/` out. Every page is rendered
 through a real Zephyrus application, then written to disk.
 
-Verified against the leaf CLI **v0.1.8** (latest release), which embeds
-leaf-core `6caeb37` (`main`), `zephyrus-framework/core` v3.18.0 and the
-`zephyrus-framework/leaf` template `2367a24` (`main`). Traps below are
-checked with that binary; the Composer tier runs the same leaf-core and
-template when `composer update` resolves those commits. leaf-core has no
-tags; Packagist serves only `dev-main`. `composer show
-zephyrus-framework/leaf-core` gives the commit a Composer project runs.
+Verified against the leaf CLI **v0.1.11** (latest release), which embeds
+leaf-core v0.1.11 (`87382bb`), `zephyrus-framework/core` v3.18.0 and the
+`zephyrus-framework/leaf` template v0.1.11 (`87ac99d`). Traps below are
+checked with that binary and with a Composer project from `composer
+create-project zephyrus-framework/leaf` (stable v0.1.11 of the template,
+leaf-core and core v3.18.0 resolved from Packagist). leaf-core and the
+template are tagged since v0.1.9; there is no CLI v0.1.9. `composer show
+zephyrus-framework/leaf-core` gives the version a Composer project runs.
+
+**A site built on CLI v0.1.8 or older** (or a Composer project locked on
+leaf-core before v0.1.10) behaves differently in places, and the notes
+below say where: `supported_locales` is not validated; `$localePrefix`
+is undefined in a template that does not set it, and so is
+`$supportedLocales` without `locale_path`; the project's `locale/` is read
+only through `locale_path`, and is not merged with the theme's catalogs;
+the language switcher drops the base URL; `leaf eject` overwrites `locale/`. leaf-core v0.1.9
+builds the 404 of a site with no `localization` section with a
+`TypeError` (HTTP 500, the build stops).
 
 **A site built on CLI v0.1.6 or older** (or a Composer project locked
-before `1a2c175`) behaves differently in places, and the migration notes
-below say where: a non-default locale's `search.json` now carries the
-locale prefix in its URLs; custom pages and `addPaths()` routes are built
-on multi-locale sites; undeclared sections show in the sidebar; the
-sitemap drops `/404/`; `robots.txt` no longer doubles a trailing slash.
+before `1a2c175`) also differs: a non-default locale's `search.json` now
+carries the locale prefix in its URLs; custom pages and `addPaths()`
+routes are built on multi-locale sites; undeclared sections show in the
+sidebar; the sitemap drops `/404/`; `robots.txt` no longer doubles a
+trailing slash.
 
 ## Two tiers (know which one you're in)
 
@@ -50,7 +61,7 @@ curl -fsSL https://leaf.ophelios.com/install.sh | sh
 ```
 
 The script installs the latest release to `/usr/local/bin`. Override with
-`LEAF_VERSION=v0.1.8` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
+`LEAF_VERSION=v0.1.11` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
 `curl -fsSL https://leaf.ophelios.com/install.sh | LEAF_PREFIX="$HOME/bin" sh`.
 
 On macOS take v0.1.7 or later: the darwin binaries of v0.1.6 carry no
@@ -77,7 +88,8 @@ while `leaf init . --force` refuses with
 
 `leaf init` writes `config.yml`, three placeholder pages in
 `content/getting-started/` (`introduction.md`, `writing-content.md`,
-`deployment.md`), `locale/en/general.json`, `public/assets/css/app.css`
+`deployment.md`), `locale/en/general.json` and `locale/fr/general.json`,
+`public/assets/css/app.css`
 (the design tokens, yours to edit) and five scripts in `public/assets/js/`
 (`theme`, `sidebar`, `search`, `copy-code`, `lang-switcher`). With
 `--force` it overwrites only those files: `.git/`, `README.md` and
@@ -104,7 +116,7 @@ localization:
   locale: "en"                       # default locale, built at the root
   supported_locales:
     - "en"
-  locale_path: "locale"              # empty disables localize() and $currentLocale
+  locale_path: "locale"              # empty: locale/ at the project root is read if it exists (CLI v0.1.11)
   timezone: "UTC"
 
 render:                              # leave as scaffolded: templates/ maps onto app/Views
@@ -224,7 +236,8 @@ Bundled files and what they receive:
 | `partials/sidebar.latte`, `toc.latte`, `search-modal.latte` | docs layout | inherited |
 | `partials/footer.latte` | landing layout only | inherited |
 
-The bundled theme loads Tailwind from its CDN with an inline config mapped
+The bundled theme loads Tailwind from its CDN (`cdn.tailwindcss.com`), Prism
+from cdnjs and its fonts from Google Fonts, with an inline config mapped
 to CSS variables (`--bg-deep`, `--bg-surface`, `--text`, `--accent`, ...)
 defined in `public/assets/css/app.css`; `theme.js` toggles `data-theme`
 on `<html>`. No bundler, no asset hashing.
@@ -335,44 +348,60 @@ localization:
 - The default locale builds to the root (`dist/guide/intro/`), every other
   one under `/{locale}/` (`dist/fr/guide/intro/`). The default locale never
   has a prefix.
-- **Every `supported_locales` entry becomes a path and a link**, so it must be a
-  code such as `fr` or `fr-ca` (2 or 3 letters, optional hyphenated subtags);
-  the core lowercases it first (`FR` becomes `fr`, `FR-CA` becomes `fr-ca`, both
-  admitted). Anything else (`../x`, `/x.example`, `fr_CA`) is refused with a
-  `ConfigurationException`, and `fr_CA` comes with the hint to use a hyphen,
-  such as `fr-ca`. The default `locale` follows the same rule and, when
-  `supported_locales` is not empty, must be one of them (otherwise the root
-  gets no `index.html`, `404.html` or `search.json`). `leaf build` stops and
-  writes nothing; under `php -S` the dev server still starts, then every request
-  answers 500 and the refusal shows in the terminal only. New in leaf-core
-  `main` from 2026-11-24, in the CLI release after v0.1.8: older builds
-  accept any value.
+- **Every `supported_locales` entry becomes a path and a link**, so since CLI
+  v0.1.10 it must be a code such as `fr` or `fr-ca` (2 or 3 letters, optional
+  hyphenated subtags of 2 to 8 letters or digits); the core lowercases it first
+  (`FR-CA` becomes `fr-ca` and builds to `/fr-ca/`). Anything else (`../x`,
+  `/x.example`, `fr_CA`) is refused with a `ConfigurationException` that names
+  the value (`fr_CA` shows as `"fr_ca"`, with the hint to use a hyphen, such as
+  `fr-ca`): `leaf build` exits 255 and leaves `dist/` as it was. The default
+  `locale` follows the same rule and, when `supported_locales` is not empty,
+  must be one of them (`locale: "de"` with `["en", "fr"]` is refused too; CLI
+  v0.1.8 built it, without a root `index.html`). On a refusal `leaf dev` exits
+  at start, or, after a config edit, keeps serving the previous `dist/` and
+  prints the refusal in the terminal; `composer dev` (`php -S`) answers 500 with
+  an empty body and shows it in the terminal only. CLI v0.1.8 and older accept
+  any value.
 - **Content falls back per page.** For `fr`, `content/fr/{section}/{slug}.md`
   wins over `content/{section}/{slug}.md`; untranslated pages build from
   the default file. A section that exists only under `content/fr/` builds
   and shows in the French sidebar only. On a multi-locale site, folders
   named after a supported locale are never treated as sections.
-- Templates get `$currentLocale`, `$defaultLocale` and `$supportedLocales`
-  (only when `locale_path` is set) and the `localize()` function, alias
-  `i18n()`. In leaf-core `main` from 2026-11-24 (the CLI release after
-  v0.1.8), `$localePrefix` is always defined: `''` for the default locale, a
-  single-locale site or no `locale_path`, `'/fr'` otherwise; a variable the
-  render passes wins, and so does a `{var $localePrefix}` in the template. On
-  CLI v0.1.8 and older it is undefined in a template that does not set it:
-  compute it first.
+- Templates get `$currentLocale`, `$defaultLocale`, `$supportedLocales` and
+  `$localePrefix`, and the `localize()` function, alias `i18n()`, in the
+  bundled templates and in overridden ones. Since CLI v0.1.10 they are always
+  defined: `$supportedLocales` is `[]` on a single-locale site, even with no
+  `localization` section, and `$localePrefix` is `''` for the default locale or
+  a single-locale site, `'/fr'` otherwise. A `{var $localePrefix}` in a template
+  still wins. On CLI v0.1.8 and older `$localePrefix` is undefined in a template
+  that does not set it, and `$supportedLocales` too when `locale_path` is empty:
+  compute them first.
 
   ```latte
   {var $localePrefix = ($currentLocale ?? 'en') === ($defaultLocale ?? 'en') ? '' : '/' . $currentLocale}
   ```
 - Strings: every `locale/{locale}/*.json` is merged into one tree (files
-  read alphabetically, later wins). `{localize('nav.home')}` reads
+  read alphabetically, later wins). On the CLI since v0.1.10, your catalogs
+  are merged key by key over the theme's, yours winning: define only the keys
+  you change (`nav.theme`), the theme's other keys stay. With `locale_path`
+  empty, CLI v0.1.11 reads `locale/` at the project root when it exists; v0.1.8
+  did not, and `localize()` returned the key. `{localize('nav.home')}` reads
   `{"nav": {"home": "Home"}}`. Placeholders use braces:
   `"greet": "Hi {name}"` with `{localize('greet', ['name' => 'Ana'])}`.
   A key missing in `fr` falls back to the default locale's value, then to
   the key itself.
 - The bundled nav already renders a language switcher when there is more
-  than one locale, and `lang-switcher.js` rewrites its links to keep the
-  current page. Write your own only in an overridden nav.
+  than one locale: a button and a menu of links (`EN`, `FR`, each with
+  `hreflang`), to the locale homes, which work without JavaScript.
+  `lang-switcher.js` rewrites them to keep the current page, except on the
+  404. Since v0.1.10 it keeps the base URL (v0.1.8 dropped it with
+  `base_url: "/docs"`; read from the script, not run in a browser). Write your
+  own only in an overridden nav.
+- **A copy in your `public/` shadows the bundled script and stylesheet.** A
+  project scaffolded by an older `leaf init` keeps its old `lang-switcher.js`,
+  `app.css`, `search.js` and the others (all six differ between v0.1.8 and
+  v0.1.11): diff them against `<tmp>/public/assets/` of `leaf build
+  --keep-tmp`, or delete the copy you never edited.
 
 Locale-aware links in your own templates:
 
@@ -381,7 +410,7 @@ Locale-aware links in your own templates:
 <a href="{$localePrefix}/guide/intro">Guide</a>
 ```
 
-Search and custom pages on multi-locale sites (CLI v0.1.8):
+Search and custom pages on multi-locale sites (CLI v0.1.11):
 
 - **Custom pages and every `addPaths()` path are built in every locale**
   (see Custom pages). CLI v0.1.6 built none of them.
@@ -405,13 +434,25 @@ Search and custom pages on multi-locale sites (CLI v0.1.8):
   (`/fr/docs/guide/intro` otherwise). An overridden partial builds its
   links like the bundled ones, with `$localePrefix`:
   `{$leafBaseUrl}{$localePrefix}/{$item['section']}/{$item['slug']}`.
-  Overrides need no change on upgrade: they replace the bundled partial
-  whole, and `url`, `section` and `slug` did not change.
-- `composer dev` serves `/{locale}/...` and `content/{locale}/` for a
-  declared non-default locale, like the build. Any other first segment
-  (`/ab/x`, or the default locale's own `/en/x`) is not stripped: it is a 404,
-  as in `dist/`. Same tier as above (leaf-core `main` from 2026-11-24, CLI
-  release after v0.1.8): older dev servers do not serve `content/{locale}/`.
+  Overrides need no change on upgrade: a full copy of the v0.1.8 theme in
+  `templates/` (its five `{var $localePrefix = ...}` lines included, or
+  removed) builds with v0.1.11 to byte-identical output. It keeps the v0.1.8
+  markup, so it gets none of the theme's later changes (language switcher
+  attributes, French labels, contrast, keyboard menus).
+- **A root-relative link in Markdown gets the base URL but not the locale
+  prefix**: on `content/fr/...` with `base_url: "/docs"`,
+  `[x](/getting-started/introduction)` stays `/docs/getting-started/introduction`
+  (the sidebar's link is `/docs/fr/...`). Write `/fr/...` in the French file.
+- `composer dev` serves `/{locale}/...` and `content/{locale}/` for a declared
+  non-default locale (`/fr-ca/...` too), like the build (leaf-core v0.1.9 and
+  later; older dev servers did not, not reverified). Any other first segment (`/ab/x`,
+  or the default locale's own `/en/x`) is not stripped: it is a 404, as in
+  `dist/`. Its `/fr/search.json` still lists the default locale's titles with
+  unprefixed URLs (the build and `leaf dev` list the French pages with `/fr/`).
+- **A miss under a locale shows the English 404**: only the default locale's
+  `404.html` is served for it (`/fr/nope` under `leaf dev`: 404, title "Page not
+  found"); the French one is `dist/fr/404/index.html`, which a static host does
+  not pick for `/fr/...`.
 
 ## SEO
 
@@ -466,7 +507,10 @@ stay clean. It rebuilds, debounced 250 ms, on changes under `content/`,
 `templates/`, `public/`, `app/` and `config.yml`.
 
 - **Not `locale/`**: after editing translations, touch `config.yml` or
-  restart.
+  restart (CLI v0.1.11: `touch config.yml` rebuilds and the new strings show).
+- It builds once at start: a refused config makes it exit. A rebuild that
+  fails later keeps serving the previous `dist/` and prints
+  `leaf dev: build exited 255` with the error.
 - Only directories that exist when it starts are watched: create
   `templates/` before starting, or restart.
 - It writes the real `dist/` and runs `post_build` hooks on every rebuild.
@@ -480,21 +524,21 @@ stay clean. It rebuilds, debounced 250 ms, on changes under `content/`,
 `dist/` is plain static files for any static host. `404.html` sits at the
 root, where most hosts look for it. Two proven patterns:
 
-- **Commit `dist/`** and let the host deploy the branch (leaf.ophelios.com
-  runs this way on DigitalOcean App Platform). Rebuild before every commit.
+- **Commit `dist/`** and let the host deploy the branch. Rebuild before
+  every commit.
 - **Build in CI with a pinned release** (the public
   [zephyrus-site](https://github.com/zephyrus-framework/site) builds
   this way for GitHub Pages):
 
 ```bash
-LEAF_VERSION=v0.1.8
+LEAF_VERSION=v0.1.11
 curl -fsSL "https://github.com/zephyrus-framework/leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
-echo "3d47d23c1a1d8327be130170dc63b1adfdd4d2e5461c7fa4cbce8c8768d47972  $RUNNER_TEMP/leaf" | sha256sum --check --strict
+echo "26d3675d47f39a835442a840da437667652628a6e46ab49ee5c2dd374bf3e377  $RUNNER_TEMP/leaf" | sha256sum --check --strict
 chmod +x "$RUNNER_TEMP/leaf"
 APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 ```
 
-  The checksum is the v0.1.8 `leaf-linux-amd64` line of the release's
+  The checksum is the v0.1.11 `leaf-linux-amd64` line of the release's
   `checksums.txt`; take the new one when you bump the version.
 
 ## Key rules

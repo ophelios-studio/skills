@@ -7,25 +7,30 @@ applies, except `templates/` (not read here: edit `app/Views/`).
 
 ## Starting a project
 
-From Packagist (the template is `zephyrus-framework/leaf`, `dev-main` only):
+From Packagist (the template is `zephyrus-framework/leaf`, tagged since
+v0.1.9):
 
 ```bash
-composer create-project zephyrus-framework/leaf my-site dev-main
+composer create-project zephyrus-framework/leaf my-site
 composer build --working-dir=my-site
 ```
 
-It works as is: the template's `composer.json` has no `path` repositories,
-so Composer resolves `zephyrus-framework/core` and
-`zephyrus-framework/leaf-core` `dev-main` from Packagist, and
-`composer update` and `composer require` work in the new project.
+It works as is, with no version argument: Composer installs the latest
+stable template (v0.1.11), and resolves `zephyrus-framework/leaf-core`
+(v0.1.11) and `zephyrus-framework/core` (v3.18.0) from Packagist. The
+template's `composer.json` has no `path` repositories, so `composer
+update` and `composer require` work in the new project.
 
 From a Binary-tier site, `leaf eject` (one-way; refuses when
-`composer.json` exists unless `--force`). CLI v0.1.7 writes `app/`, `bin/`,
+`composer.json` exists unless `--force`). CLI v0.1.11 writes `app/`, `bin/`,
 `vendor/`, `composer.json` and `composer.lock`, and merges the bundled
 `public/` into yours without overwriting: your `public/assets/css/app.css`,
 extra files and `README.md` are kept, and `public/index.php` is added. It
 also writes two stray files, `.gitkeep` and `.staged`, to delete. It leaves
-`content/`, `config.yml`, `templates/` and `dist/` alone. The
+`content/`, `config.yml`, `templates/` and `dist/` alone, and keeps your
+`locale/` translations: the theme's keys are added to
+`locale/{locale}/general.json` next to yours (CLI v0.1.8 overwrote the
+file with the theme's). The
 `composer.json` has no `path` repositories (it requires leaf-core `@dev`
 from Packagist), so `composer install`, `composer update` and
 `composer build` work as shipped, and `composer dev` serves the pages.
@@ -97,7 +102,8 @@ final class Application extends Kernel
 - Protected properties: `$config`, `$leafConfig`, `$renderEngine`,
   `$markdownParser`, `$contentLoader`, `$searchIndexBuilder`,
   `$translator` and `$translationExtension` (both null when
-  `localization.locale_path` is empty).
+  `localization.locale_path` is empty and there is no `locale/` at the
+  project root).
 - Public: `run()`, `buildForStaticGeneration(): array{Application, Router}`,
   `getConfig()`, `getLeafConfig()`, `getRenderEngine()`,
   `getContentLoader()`, `getTranslator()`, `getTranslationExtension()`.
@@ -227,9 +233,15 @@ default strings and content.
 
 - serves real files from `public/`, renders everything else live through
   `public/index.php`;
-- **treats any two-letter first segment as a locale** (`/fr/x`, but also
-  `/ui/x` or `/zz/x`) and strips it; the strings switch, but
-  `content/{locale}/` overrides are not applied (the build applies them);
+- strips a first segment shaped like a locale code (`/fr/x`, `/fr-ca/x`,
+  `/ab/x`) before routing, and the kernel keeps it only for a declared
+  non-default locale: the strings switch and `content/{locale}/` overrides
+  apply (leaf-core v0.1.9 and later), `/ab/x` is a 404, and a section named
+  `ui` or `api` is still served at `/ui/x`. `/{locale}/search.json` lists the
+  default locale's titles with unprefixed URLs here, unlike the build;
+- a refused `localization` setting (an invalid `supported_locales` entry)
+  answers with HTTP 500 and an empty body; the error is in the terminal
+  running `composer dev`;
 - answers `/__dev/reload` with a hash of file times under `content/`,
   `app/Views/`, `public/assets/css/`, `public/assets/js/` and `src/` (not
   `locale/`);
