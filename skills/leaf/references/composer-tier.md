@@ -7,8 +7,7 @@ applies, except `templates/` (not read here: edit `app/Views/`).
 
 ## Starting a project
 
-From Packagist (the template is `zephyrus-framework/leaf`, tagged since
-v0.1.9):
+From Packagist (the template is `zephyrus-framework/leaf`):
 
 ```bash
 composer create-project zephyrus-framework/leaf my-site
@@ -16,24 +15,33 @@ composer build --working-dir=my-site
 ```
 
 It works as is, with no version argument: Composer installs the latest
-stable template (v0.1.12), and resolves `zephyrus-framework/leaf-core`
-(v0.1.12) and `zephyrus-framework/core` (v3.18.0) from Packagist. The
-template's `composer.json` has no `path` repositories, so `composer
-update` and `composer require` work in the new project.
+stable template (v1.0.0), and resolves `zephyrus-framework/leaf-core`
+(v1.0.0) and `zephyrus-framework/core` (v3.18.0) from Packagist. The
+template's `composer.json` requires leaf-core `^1.0` with the default
+stability, and has no `path` repositories. `composer build` first compiles
+`public/assets/css/tailwind.css` (`@css`, then `php bin/build.php`), which
+downloads the Tailwind CLI on the first run (needs network; see `SKILL.md`).
+
+**A project from the 0.1.x template or a 0.1.x eject** requires leaf-core
+`@dev` with `"minimum-stability": "dev"`: set `^1.0`, drop `minimum-stability`,
+`composer update zephyrus-framework/leaf-core`. Its theme copy keeps the CDN
+until you take the compiled sheet (theme CHANGELOG, "Upgrading a Composer
+project"); see leaf-core's
+[UPGRADE.md](https://github.com/zephyrus-framework/leaf-core/blob/v1.0.0/UPGRADE.md).
 
 From a Binary-tier site, `leaf eject` (one-way; refuses when
-`composer.json` exists unless `--force`). CLI v0.1.12 writes `app/`, `bin/`,
-`vendor/`, `composer.json` and `composer.lock`, and merges the bundled
+`composer.json` exists unless `--force`). CLI v1.0.0 writes `app/`, `bin/`
+(with `tailwind.sh`), `resources/`, `tailwind.config.js`, `vendor/`,
+`composer.json` (leaf-core `^1.0`) and `composer.lock`, and merges the bundled
 `public/` into yours without overwriting: your `public/assets/css/app.css`,
 extra files and `README.md` are kept, and `public/index.php` is added. It
 also writes two stray files, `.gitkeep` and `.staged`, to delete. It leaves
 `content/`, `config.yml`, `templates/` and `dist/` alone, and keeps your
 `locale/` translations: the theme's keys are added to
-`locale/{locale}/general.json` next to yours (CLI v0.1.8 overwrote the
-file with the theme's). The
-`composer.json` has no `path` repositories (it requires leaf-core `@dev`
-from Packagist), so `composer install`, `composer update` and
-`composer build` work as shipped, and `composer dev` serves the pages.
+`locale/{locale}/general.json` next to yours. The
+`composer.json` has no `path` repositories, so `composer install`, `composer update` and
+`composer build` work as shipped (`composer build` ran on a fresh eject with CLI
+v1.0.0), and `composer dev` serves the pages.
 
 One thing to do by hand: **`templates/` stops applying** to `composer
 build`, which renders `app/Views/` only. Move each override to the same
@@ -41,28 +49,11 @@ relative path under `app/Views/`. Until then `leaf build` (which still
 works on an ejected project and still reads `templates/`) and `composer
 build` produce different sites.
 
-**A project ejected with CLI v0.1.6** differs: its `composer.json` keeps
-the maintainers' `path` repositories (`../zephyrus2`,
-`../zephyrus-leaf-core`), `README.md` was overwritten, and `public/index.php`
-was never written. Fix it by hand:
-
-1. Create `public/index.php`, or `composer dev` answers HTTP 500:
-
-   ```php
-   <?php
-
-   declare(strict_types=1);
-
-   define('ROOT_DIR', dirname(__DIR__));
-   require ROOT_DIR . '/vendor/autoload.php';
-
-   (new \App\Models\Core\Application())->run();
-   ```
-
-2. Run `composer config --unset repositories` before `composer update` or
-   `composer require`, which otherwise fail with `In PathRepository.php line
-   163` (`composer install` works as shipped).
-3. Restore your `README.md` from version control.
+**A project ejected with CLI v0.1.6** keeps the maintainers' `path`
+repositories in `composer.json` (`composer config --unset repositories` before
+`composer update`), has no `public/index.php` (`composer dev` answers 500: copy
+the template's) and had its `README.md` overwritten (restore it from version
+control).
 
 ## Application (`Leaf\Kernel`)
 

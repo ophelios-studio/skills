@@ -1,6 +1,6 @@
 ---
 name: leaf
-description: 'Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v0.1.12, which embeds leaf-core v0.1.12 and zephyrus-framework/core v3.18.0): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, a stale `dist/` that keeps an excluded page in the search index, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).'
+description: 'Use when working in a Zephyrus Leaf project, the static-site generator built on the Zephyrus PHP framework (leaf.ophelios.com). Triggers on a config.yml with a `leaf:` section, `zephyrus-framework/leaf-core` or `zephyrus-framework/leaf`, `Leaf\Kernel`, `BuildCommand`, `StaticSiteBuilder`, `PageDiscovery`, `LeafConfig`, `ContentLoader`, the `leaf init|dev|build|eject` CLI, or either project shape, Binary CLI (content/, templates/, public/, locale/, config.yml, no composer.json) or Composer (app/Controllers, an Application extending Leaf\Kernel, bin/build.php). Covers both tiers, template overrides, custom pages, the build pipeline and post_build hooks, multi-locale output (default locale at root, per-locale content and search index), sitemap, robots, canonical and hreflang, both dev servers and deployment, with verified traps (CLI v1.0.0, which embeds leaf-core v1.0.0 and zephyrus-framework/core v3.18.0): canonical URLs that all point home, a head with no hreflang or og:image, search URLs that already carry the locale prefix, a stale `dist/` that keeps an excluded page in the search index, hooks that run without a shell, and what to move by hand after eject (`templates/` into `app/Views/`).'
 ---
 
 # Zephyrus Leaf
@@ -9,34 +9,38 @@ A static site generator for documentation, landings and blogs: Markdown
 plus Latte templates in, plain HTML in `dist/` out. Every page is rendered
 through a real Zephyrus application, then written to disk.
 
-Verified against the leaf CLI **v0.1.12** (latest release), which embeds
-leaf-core v0.1.12 (`3ac0ba1`), `zephyrus-framework/core` v3.18.0 and the
-`zephyrus-framework/leaf` template v0.1.12 (`8b2fc2f`). Traps below are
+Verified against the leaf CLI **v1.0.0** (latest release), which embeds
+leaf-core v1.0.0 (`fd0997d`), `zephyrus-framework/core` v3.18.0 and the
+`zephyrus-framework/leaf` template v1.0.0 (`96eaa0f`). Traps below are
 checked with that binary and with a Composer project from `composer
-create-project zephyrus-framework/leaf` (stable v0.1.12 of the template,
-leaf-core v0.1.12 and core v3.18.0 resolved from Packagist). leaf-core and
-the template are tagged since v0.1.9; there is no CLI v0.1.9. `composer show
+create-project zephyrus-framework/leaf` (stable v1.0.0 of the template,
+leaf-core v1.0.0 and core v3.18.0 resolved from Packagist). `composer show
 zephyrus-framework/leaf-core` gives the version a Composer project runs.
 
-**A site built on CLI v0.1.11 or older** (or a Composer project locked on
-leaf-core v0.1.11) differs in these places: `search.json` entries carry no
-`content`; a page excluded from the build stays in the index; there is no
-`leaf.logo`; a multilingual site has no `/{locale}/404.html`; `composer dev`
-answers a refused config with an empty 500. The theme changes (skip link,
-search dialog, table frames, locale keys, Markdown links keeping the locale)
-come with the CLI binary; a Composer project owns its theme copy, and
-`composer update` brings leaf-core only. CLI v0.1.6 and older differ further;
-the notes below name them.
+**Stable from 1.0.0** (leaf-core, template and CLI share the number): what is
+public does not break before 2.0, a security fix excepted. Public: the
+`config.yml` keys, the content layout and the front matter Leaf reads, the
+`dist/` output and the `search.json` fields, template names and their
+variables, hooks, CLI commands and asset names, and the leaf-core classes
+that are not `@internal` (`SlugTitle`, `LocaleCode`, `FileWatcher`,
+`LeafLatteExtension` are). Not public: the theme's markup and CSS classes,
+`app.css` beyond the properties under "Theme" below, the theme's JS. See
+[Versioning](https://github.com/zephyrus-framework/leaf-core/blob/v1.0.0/README.md#versioning).
 
-**A site built on CLI v0.1.8 or older** (or a Composer project locked on
-leaf-core before v0.1.10) behaves differently in places, and the notes
-below say where: `supported_locales` is not validated; `$localePrefix`
-is undefined in a template that does not set it, and so is
-`$supportedLocales` without `locale_path`; the project's `locale/` is read
-only through `locale_path`, and is not merged with the theme's catalogs;
-the language switcher drops the base URL; `leaf eject` overwrites `locale/`.
-leaf-core v0.1.9 builds the 404 of a site with no `localization` section with
-a `TypeError` (HTTP 500, the build stops).
+**Moving from 0.1.x** (see leaf-core's
+[UPGRADE.md](https://github.com/zephyrus-framework/leaf-core/blob/v1.0.0/UPGRADE.md)):
+a Composer project requires `zephyrus-framework/leaf-core` `^1.0` by hand
+(Composer does not move a `^0.1` constraint), and a project from the old
+template drops `minimum-stability: dev`; a Binary project bumps
+`LEAF_VERSION` and its checksum (see Deploying). The notes below say where
+0.1.x behaves differently; a site on CLI v0.1.11 or older (or leaf-core
+before v0.1.12) has no `search.json` `content`, keeps an excluded page in
+the index, has no `leaf.logo` and no `/{locale}/404.html`, and `composer dev`
+answers a refused config with an empty 500. The theme comes with the CLI
+binary, but a Composer project owns its theme copy, and `composer update`
+brings leaf-core only. On v0.1.8 or older, `supported_locales` is not
+validated, `locale/` is not merged with the theme's catalogs, and `leaf eject`
+overwrites it.
 
 ## Two tiers (know which one you're in)
 
@@ -64,11 +68,8 @@ curl -fsSL https://leaf.ophelios.com/install.sh | sh
 ```
 
 The script installs the latest release to `/usr/local/bin`. Override with
-`LEAF_VERSION=v0.1.12` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
+`LEAF_VERSION=v1.0.0` (pin a tag) and `LEAF_PREFIX=<dir>`, set on `sh`:
 `curl -fsSL https://leaf.ophelios.com/install.sh | LEAF_PREFIX="$HOME/bin" sh`.
-
-On macOS take v0.1.7 or later: the darwin binaries of v0.1.6 carry no
-`LC_UUID` and recent macOS refuses them (`missing LC_UUID load command`).
 
 Installing needs no PHP. **Building does**: the binary shells out to the
 `php` on `PATH` (8.4, with `intl`, `mbstring` and `tokenizer`; without
@@ -93,9 +94,9 @@ while `leaf init . --force` refuses with
 `content/getting-started/` (`introduction.md`, `writing-content.md`,
 `deployment.md`), `locale/en/general.json` and `locale/fr/general.json`,
 `public/assets/css/app.css`
-(the design tokens, yours to edit) and six scripts in `public/assets/js/`
-(`theme`, `sidebar`, `search`, `copy-code`, `lang-switcher`, `tables`; CLI
-v0.1.11 wrote five, without `tables`). With
+(the design tokens, yours to edit), the theme's compiled `tailwind.css`
+(CLI v1.0.0) and six scripts in `public/assets/js/` (`theme`, `sidebar`,
+`search`, `copy-code`, `lang-switcher`, `tables`). With
 `--force` it overwrites only those files: `.git/`, `README.md` and
 `LICENSE` survive. **Delete the placeholder pages** or they ship.
 
@@ -114,13 +115,13 @@ Same file on both tiers. The CLI refuses to build without `leaf.name`
 ```yaml
 application:
   environment: !env APP_ENV, dev
-  debug: !env APP_DEBUG, true        # see "PHP warnings in built pages"
+  debug: !env APP_DEBUG, true        # build production with false
 
 localization:
   locale: "en"                       # default locale, built at the root
   supported_locales:
     - "en"
-  locale_path: "locale"              # empty: locale/ at the project root is read if it exists (CLI v0.1.11)
+  locale_path: "locale"              # empty: locale/ at the project root is read if it exists
   timezone: "UTC"
 
 render:                              # leave as scaffolded: templates/ maps onto app/Views
@@ -156,7 +157,9 @@ rest empty.
 
 **`leaf.logo`** (v0.1.12) is `""` or a path under `public/` that starts with
 a single `/` (`/assets/images/logo.png`); the bundled nav then shows that
-image, behind `base_url`, instead of its SVG mark. A relative path, `//host`,
+image, behind `base_url`, instead of its SVG mark, with the site name beside
+it. Since 1.0.0 the name is shown whole when it fits and hidden (clipped, still
+read by screen readers) when narrow, and a wide logo scales down. A relative path, `//host`,
 a URL, `..`, a space or a quote stops the build (exit 255, `dist/`
 untouched): `Configuration section 'leaf' field 'logo' has invalid
 value "assets/logo.png": an empty string, or a path under public/ that starts
@@ -201,16 +204,22 @@ Your content here.
 - **`leaf.sections` orders and labels.** A section folder it does not list
   still builds, and shows in the sidebar, the previous/next chain, the
   search index and the sitemap, after the declared sections, alphabetically
-  (labelled from the slug; CLI v0.1.6 hid it from the sidebar and the chain).
+  (labelled from the slug).
   Without `leaf.sections`, every section shows, alphabetically, labelled from
   the slug (`getting-started` becomes "Getting Started").
-- **Underscores in section folder names work** (CLI v0.1.7 and later):
-  `my_notes:` in `leaf.sections` matches `content/my_notes/`, with the
-  configured label and position. Without `leaf.sections`, the label is
-  "My Notes".
+- **Underscores in section folder names work**: `my_notes:` in
+  `leaf.sections` matches `content/my_notes/`; without it, the label is "My Notes".
 - **A page title taken from a file name reads `_` as a space**, search index
   included: without a `title` in the front matter, `Second_note.md` is
-  "Second Note". The URL keeps the file name.
+  "Second Note". The URL keeps the file name. Since 1.0.0 a numeric `title`
+  (`title: 2024`) is indexed as the string "2024", and a non-scalar one
+  (`title: [a, b]`) takes the slug's title. A search index that cannot be
+  encoded fails the build, naming `search.json`, instead of writing an empty file.
+- **Front matter is read by symfony/yaml (YAML 1.2)** whether or not the PHP
+  `yaml` extension is installed (1.0.0): `yes`, `no`, `on` and `off` are
+  strings (they were booleans on a host with the extension, GitHub Actions with
+  setup-php included). Leaf reads only `title` and `order`; your templates read
+  the rest.
 - Each heading permalink (`.heading-permalink`) has `tabindex="-1"`, so
   keyboard users do not tab through every heading anchor.
 
@@ -244,22 +253,47 @@ Bundled files and what they receive:
 | `404.latte` | `/404`, written to `dist/404.html` (and `dist/{locale}/404.html`) | `title`, `firstPage` |
 | `pages/{name}.latte` | custom pages | `title`, `pageTitle`, `pagePath` |
 | `partials/head.latte`, `partials/nav.latte` | both layouts | inherited |
-| `partials/sidebar.latte`, `toc.latte`, `search-modal.latte` | docs layout | inherited |
-| `partials/footer.latte` | landing layout only | inherited |
+| `partials/sidebar.latte`, `toc.latte` | docs layout | inherited |
+| `partials/search-modal.latte` | both layouts (landing since 1.0.0: home, custom pages, 404) | inherited |
+| `partials/footer.latte` | landing layout only; stays at the bottom of a short page (1.0.0) | inherited |
 
-The bundled theme loads Tailwind from its CDN (`cdn.tailwindcss.com`), Prism
-from cdnjs and its fonts from Google Fonts, with an inline config mapped
-to CSS variables (`--bg-deep`, `--bg-surface`, `--text`, `--accent`, ...)
-defined in `public/assets/css/app.css`; `theme.js` toggles `data-theme`
-on `<html>`. No bundler, no asset hashing.
+The bundled theme ships Tailwind 3.4.17 compiled, in
+`public/assets/css/tailwind.css` (1.0.0; v0.1.12 and older load it from
+`cdn.tailwindcss.com`), Prism from cdnjs (with SRI) and its fonts from Google
+Fonts. Its colour tokens map to CSS variables (`--bg-deep`, `--bg-surface`,
+`--text`, `--accent`, ...) defined in `public/assets/css/app.css`; `theme.js`
+toggles `data-theme` on `<html>`. No bundler, no asset hashing.
+
+**A Tailwind class the sheet lacks** (in a template or in a `class="..."` of a
+Markdown page) has no style until you add it. Composer tier: `composer build`
+recompiles the sheet before the pages (`composer css` alone), reading
+`app/Views/**/*.latte`, the `class` attributes of `content/**/*.md` and
+`public/assets/js/`; `bin/tailwind.sh` downloads the standalone Tailwind CLI
+on first run (`sh`, `curl` or `wget`, `sha256sum` or `shasum`, access to
+GitHub). Binary tier: nothing compiles; copy
+`partials/head.latte` into `templates/` and load the CDN there (snippet in the
+theme README, "Styling"), or link a stylesheet of your own. A project from
+`leaf init` holds its own `public/assets/css/tailwind.css`, which shadows the
+bundled one. A Composer project from the 0.1.x template keeps loading the CDN
+until it takes the compiled sheet (theme CHANGELOG, "Upgrading a Composer
+project").
+
+**Retheming**: the properties of the theme README's "Theme" table
+(`--accent`, `--accent-light`, `--bg-deep`, ...) are public in 1.x. Override them in a stylesheet linked after `app.css`, under
+`:root`, `[data-theme="light"]` and `:root:not([data-theme="dark"])` inside
+`@media (prefers-color-scheme: light)` (`:root` alone loses in the system's
+light mode). `--accent-light` paints links and inline code.
+
+**CSP**: the theme README's "Content Security Policy" section gives the
+minimal policy (Prism limited to `.../ajax/libs/prism/1.29.0/` on cdnjs); the
+Tailwind CDN needs more.
 
 **Document titles come from `partials/head.latte`** (v0.1.12):
 `<title>`, `og:title` and `twitter:title` read `{$title} · {$leafName}`
 with a middle dot, the site name alone on the landing page, and the 404
 carries `noindex`. A custom page passes its bare name as `title`. CLI
-v0.1.11 and older put an em-dash (U+2014) there, in `layouts/docs.latte` and
-`head.latte`, and the 404 `<title>` had no site name: a project that bans
-em-dashes must override both files on those versions.
+v0.1.11 and older put an em-dash there (override `layouts/docs.latte` and
+`head.latte` to ban it).
 
 **Skip link** (v0.1.12): both layouts start `<body>` with a `.skip-link` to
 `#main-content` and render `<main id="main-content" tabindex="-1">`. A custom
@@ -286,12 +320,13 @@ stylesheet (`body:not(:has(#main-content)) > .skip-link`) hides the link.
 - `templates/pages/404.latte` is shadowed by the `/404` route: override
   `templates/404.latte` instead.
 - On a multi-locale site custom pages are built in every locale:
-  `/extra/` and `/fr/extra/` (CLI v0.1.6 skipped them).
+  `/extra/` and `/fr/extra/`.
 
 ## Build pipeline
 
 What `leaf build` and `composer build` run (`Leaf\BuildCommand::run()`),
-in order:
+in order (`composer build` first runs `composer css`, the Tailwind compile,
+then `php bin/build.php`, which is the list below; 1.0.0):
 
 1. Collect paths: every `GET` route without a `{parameter}`, every
    `content/*/*.md`, plus `addPaths()` (custom pages arrive this way).
@@ -305,8 +340,7 @@ in order:
 4. Any error: print `<path> returned HTTP <code>` (no exception detail),
    exit 1, stop.
 5. Move each `404/index.html` to `404.html`: `/404.html`, and on a
-   multi-locale site `/{locale}/404.html` too (v0.1.11 moved the default
-   locale's only).
+   multi-locale site `/{locale}/404.html` too.
 6. Write `search.json` (multi-locale: also `/{locale}/search.json`). Each
    entry has `title`, `section`, `url`, `excerpt`, `headings` and, since
    v0.1.12, `content`: the page's full text (entities decoded, heading
@@ -325,14 +359,6 @@ build is not rebuilt, but `composer build` never empties `dist/`: a page built
 before the exclusion stays on disk **and in `search.json`** (3 entries after
 excluding one of 3 pages on an existing `dist/`, 2 after `rm -rf dist`). Run
 `rm -rf dist` before a build that must drop pages.
-
-### PHP warnings in built pages
-
-CLI v0.1.6 with `debug: true` (the scaffold default) wrote template warnings
-into the built page (`Warning: ... in /tmp/leaf-build-.../cache/latte/...`)
-while the build reported OK; v0.1.7 and later do not. Rebuild a v0.1.6 site
-and check once: `grep -rl 'Warning:' dist/`. Build production output with
-`APP_DEBUG=false` anyway.
 
 ## Post-build hooks
 
@@ -380,7 +406,11 @@ localization:
   (`FR-CA` becomes `fr-ca` and builds to `/fr-ca/`). Anything else (`../x`,
   `/x.example`, `fr_CA`) is refused with a `ConfigurationException` that names
   the value (`fr_CA` shows as `"fr_ca"`, with the hint to use a hyphen, such as
-  `fr-ca`): `leaf build` exits 255 and leaves `dist/` as it was. The default
+  `fr-ca`): `leaf build` exits 255 and leaves `dist/` as it was. A code listed
+  twice is refused too (1.0.0), after the lowercasing (`"en"` and `"EN"`):
+  `Configuration section 'localization' field 'supported_locales' has invalid
+  value "en": listed once; locale codes are compared in lower case, so "EN" and
+  "en" are the same locale.` The default
   `locale` follows the same rule and, when `supported_locales` is not empty,
   must be one of them (`locale: "de"` with `["en", "fr"]` is refused too; CLI
   v0.1.8 built it, without a root `index.html`). On a refusal `leaf dev` exits
@@ -401,19 +431,13 @@ localization:
   `supported_locales: ["en"]`), `[]` when none is set, as with no
   `localization` section, and `$localePrefix` is `''` for the default locale or
   a single-locale site, `'/fr'` otherwise. A `{var $localePrefix}` in a template
-  still wins. On CLI v0.1.8 and older `$localePrefix` is undefined in a template
-  that does not set it, and `$supportedLocales` too when `locale_path` is empty:
-  compute them first.
-
-  ```latte
-  {var $localePrefix = ($currentLocale ?? 'en') === ($defaultLocale ?? 'en') ? '' : '/' . $currentLocale}
-  ```
+  still wins. On CLI v0.1.8 and older they can be undefined: compute them first.
 - Strings: every `locale/{locale}/*.json` is merged into one tree (files
   read alphabetically, later wins). On the CLI since v0.1.10, your catalogs
   are merged key by key over the theme's, yours winning: define only the keys
   you change (`nav.theme`), the theme's other keys stay. With `locale_path`
-  empty, CLI v0.1.11 reads `locale/` at the project root when it exists; v0.1.8
-  did not, and `localize()` returned the key. `{localize('nav.home')}` reads
+  empty, `locale/` at the project root is read when it exists.
+  `{localize('nav.home')}` reads
   `{"nav": {"home": "Home"}}`. Placeholders use braces:
   `"greet": "Hi {name}"` with `{localize('greet', ['name' => 'Ana'])}`.
   A key missing in `fr` falls back to the default locale's value, then to
@@ -421,7 +445,11 @@ localization:
   `pagination.label`, `table.scroll`, `table.scroll_caption`, `not_found.docs`,
   `search.close_text`) reach a project catalogue that lacks them through that
   merge: a French `general.json` holding only `nav.skip` still built every
-  other label.
+  other label. Likewise `search.loading` and `search.unavailable` (1.0.0; and
+  `search.to_select` now reads "to open"): a Binary site with older
+  `locale/` files gets the theme's text. A Composer project with its own
+  `locale/` and no such key gets the key in the `data-loading` and
+  `data-unavailable` attributes, and the dialog shows English, never the key.
 - The bundled nav already renders a language switcher when there is more
   than one locale: a button and a menu of links (`EN`, `FR`, each with
   `hreflang`), to the locale homes, which work without JavaScript.
@@ -430,10 +458,10 @@ localization:
   `base_url: "/docs"`; read from the script, not run in a browser). Write your
   own only in an overridden nav.
 - **A copy in your `public/` shadows the bundled script and stylesheet.** A
-  project scaffolded by an older `leaf init` keeps its old `lang-switcher.js`,
-  `app.css`, `search.js` and the others (all but `theme.js` differ between v0.1.11 and
-  v0.1.12, and `tables.js` is new): diff them against `<tmp>/public/assets/` of `leaf build
-  --keep-tmp`, or delete the copy you never edited.
+  project scaffolded by an older `leaf init` keeps its old scripts and
+  stylesheets (`app.css`, `search.js`, ... and no `tailwind.css`): diff them
+  against `<tmp>/public/assets/` of `leaf build --keep-tmp`, or delete the copy
+  you never edited.
 
 Locale-aware links in your own templates:
 
@@ -452,40 +480,35 @@ Search and custom pages on multi-locale sites (CLI v0.1.12):
   `leaf-base-url` plus `/search.json`; the head writes the page's own
   locale index there. Since v0.1.12 the search is a modal dialog with
   plain-text results, and a match found only in a page body opens the page at
-  the word (`.../introduction/#:~:text=static`). **From v0.1.6:** its
-  non-default `search.json` had no prefix, so a search script that adds one
+  the word (`.../introduction/#:~:text=static`). Since 1.0.0 it shows a loading
+  and an "unavailable" state (an index that does not answer in 10 s; fetched
+  again when the dialog reopens), announces them and "no results" through a
+  `status` region, and preselects the first result, so Enter opens it.
+  **From v0.1.6:** its non-default `search.json` had no prefix, so a search script that adds one
   now yields `/fr/fr/guide/intro`, and a hook resolving
   `dirname(<search.json>) . url` misses the file: use `<dist> . url`.
-- **Since CLI v0.1.8 the bundled theme keeps the locale**: on a non-default
-  locale, the sidebar, previous/next, logo, landing and 404 links carry the
-  prefix (`/fr/guide/intro`, `/docs/fr/guide/intro` with a base URL), and a
-  page that exists only in `content/fr/` is linked. On v0.1.7 and earlier
-  they had no prefix and left the locale.
+- **The bundled theme keeps the locale** (CLI v0.1.8 and later): on a
+  non-default locale, the sidebar, previous/next, logo, landing and 404 links
+  carry the prefix (`/fr/guide/intro`, `/docs/fr/guide/intro` with a base URL),
+  and a page that exists only in `content/fr/` is linked.
 - **An item's `url` (sidebar, `prevPage`, `nextPage`) has no locale
   prefix**: it is the base URL plus `/section/slug` (`/docs/guide/intro`).
-  Putting the prefix in front of it works only with an empty base URL. An overridden partial builds its
-  links like the bundled ones, with `$localePrefix`:
+  Putting the prefix in front of it works only with an empty base URL. An
+  overridden partial builds its links like the bundled ones, with `$localePrefix`:
   `{$leafBaseUrl}{$localePrefix}/{$item['section']}/{$item['slug']}`.
-  Overrides need no change on upgrade: a full copy of the v0.1.8 theme in
-  `templates/` (its five `{var $localePrefix = ...}` lines included, or
-  removed) still builds with v0.1.12, and the output differs from v0.1.11's
-  only by the core's changes: `search.json` `content`, `/{locale}/404.html`
-  and the `div.table-scroll` frame round Markdown tables. It keeps the v0.1.8
-  markup, so it gets none of the theme's later changes (language switcher
-  attributes, French labels, contrast, keyboard menus, skip link, search
-  dialog).
+  An override copied from an older theme keeps its own markup, so it gets none
+  of the theme's later changes (theme CHANGELOG, "What an override must take over").
 - **A root-relative Markdown link to a doc page keeps the locale** (v0.1.12):
   on `content/fr/...` with `base_url: "/docs"`,
   `[x](/getting-started/deployment)` becomes
   `/docs/fr/getting-started/deployment`, `[home](/)` becomes `/docs/fr/`, and
   an explicit `/fr/...` is not doubled. Only existing doc pages and `/` get
   the prefix: assets, other paths and links to a missing page get the base URL
-  alone. CLI v0.1.11 gave every one the base URL only (write `/fr/...` in the
-  French file there). The rule lives in the template's `DocsController`, so a
+  alone. The rule lives in the template's `DocsController`, so a
   Composer project keeps its own copy until it takes the new one.
 - `composer dev` serves `/{locale}/...` and `content/{locale}/` for a declared
   non-default locale (`/fr-ca/...` too), like the build (leaf-core v0.1.9 and
-  later; older dev servers did not, not reverified). Any other first segment (`/ab/x`,
+  later). Any other first segment (`/ab/x`,
   or the default locale's own `/en/x`) is not stripped: it is a 404, as in
   `dist/`. Since v0.1.12 its `/fr/search.json` lists the French pages with
   `/fr/` URLs, like the build and `leaf dev` (v0.1.11 listed the default
@@ -506,15 +529,11 @@ Search and custom pages on multi-locale sites (CLI v0.1.12):
 **`sitemap.xml` and `robots.txt` exist only when `production_url` is set.**
 
 - `robots.txt` is `User-agent: *`, `Allow: /` and
-  `Sitemap: <production_url>/sitemap.xml`, with a single slash even when
-  `production_url` ends with one (CLI v0.1.6 wrote `//sitemap.xml`). Keep
-  the value without a trailing slash anyway.
+  `Sitemap: <production_url>/sitemap.xml`.
 - The sitemap lists every built page with a trailing slash, multi-locale
   with `xhtml:link` hreflang alternates and `x-default`. It lists no 404
   page, and each locale's own pages (a page that exists only in
-  `content/fr/` is listed under `/fr/`). v0.1.6 listed `/404/` and repeated
-  the first locale's pages for every locale: remove a `post_build` hook that
-  patched the sitemap for either.
+  `content/fr/` is listed under `/fr/`).
 - **The bundled head has no `<link rel="canonical">`, no hreflang, no
   `og:image`.** Add them in an overridden `templates/partials/head.latte`.
   **Nothing sets `$requestPath` on the Binary tier**: a canonical built
@@ -552,7 +571,7 @@ stay clean. It rebuilds, debounced 250 ms, on changes under `content/`,
 `templates/`, `public/`, `app/` and `config.yml`.
 
 - **Not `locale/`**: after editing translations, touch `config.yml` or
-  restart (CLI v0.1.11: `touch config.yml` rebuilds and the new strings show).
+  restart.
 - It builds once at start: a refused config makes it exit. A rebuild that
   fails later keeps serving the previous `dist/` and prints
   `leaf dev: build exited 255` with the error.
@@ -578,14 +597,14 @@ script of the bundled 404, see Multi-locale). Two proven patterns:
   this way for GitHub Pages):
 
 ```bash
-LEAF_VERSION=v0.1.12
+LEAF_VERSION=v1.0.0
 curl -fsSL "https://github.com/zephyrus-framework/leaf-cli/releases/download/${LEAF_VERSION}/leaf-linux-amd64" -o "$RUNNER_TEMP/leaf"
-echo "27e403aa8f5e9ab18c50e68d377e56e13dbd39f6c9f2105b3ab630ec9f16b5ec  $RUNNER_TEMP/leaf" | sha256sum --check --strict
+echo "06f75047b74bc05f030bc683674d141e95599379a1996a1d55d7ad347b9c5a2b  $RUNNER_TEMP/leaf" | sha256sum --check --strict
 chmod +x "$RUNNER_TEMP/leaf"
 APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 ```
 
-  The checksum is the v0.1.12 `leaf-linux-amd64` line of the release's
+  The checksum is the v1.0.0 `leaf-linux-amd64` line of the release's
   `checksums.txt`; take the new one when you bump the version.
 
 ## Key rules
