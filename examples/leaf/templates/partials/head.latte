@@ -1,51 +1,32 @@
 {*
-  Override of the bundled app/Views/partials/head.latte: middle dots
-  instead of em-dashes in og:title and twitter:title, plus canonical,
-  hreflang and og:image, which the bundled head does not emit.
+  Override of the bundled app/Views/partials/head.latte (Leaf 1.0.0): the
+  bundled head, plus canonical, hreflang and og:image, which it does not
+  emit, and a link to site.css after the theme's stylesheets.
 *}
+{var $siteName = $leafName ?? ''}
+{var $pageName = $title ?? ''}
+{var $documentTitle = $pageName === '' || $pageName === $siteName ? $siteName : ($siteName === '' ? $pageName : $pageName . ' · ' . $siteName)}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{$documentTitle}</title>
 <meta name="leaf-base-url" content="{$leafBaseUrl}">
+<meta name="leaf-search-url" content="{$leafBaseUrl}{if ($currentLocale ?? '') !== '' && ($currentLocale ?? '') !== ($defaultLocale ?? '')}/{$currentLocale}{/if}/search.json">
 <meta n:if="($pageDescription ?? '') !== ''" name="description" content="{$pageDescription}">
-<meta name="robots" content="index, follow">
+<meta name="robots" content="{($notFound ?? false) ? 'noindex' : 'index, follow'}">
 <meta property="og:type" content="article">
-<meta property="og:title" content="{$title ?? ''} · {$leafName ?? ''}">
+<meta property="og:title" content="{$documentTitle}">
 <meta n:if="($pageDescription ?? '') !== ''" property="og:description" content="{$pageDescription}">
-<meta property="og:site_name" content="{$leafName ?? ''}">
+<meta property="og:site_name" content="{$siteName}">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="{$title ?? ''} · {$leafName ?? ''}">
+<meta name="twitter:title" content="{$documentTitle}">
 <meta n:if="($pageDescription ?? '') !== ''" name="twitter:description" content="{$pageDescription}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-    theme: {
-        extend: {
-            colors: {
-                deep: 'var(--bg-deep)',
-                surface: 'var(--bg-surface)',
-                elevated: 'var(--bg-elevated)',
-                border: 'var(--border)',
-                'border-accent': 'var(--border-accent)',
-                body: 'var(--text)',
-                bright: 'var(--text-bright)',
-                muted: 'var(--text-muted)',
-                accent: 'var(--accent)',
-                'accent-light': 'var(--accent-light)',
-                'accent-glow': 'var(--accent-glow)',
-            },
-            fontFamily: {
-                body: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-                mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-            },
-        },
-    },
-}
-</script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" integrity="sha512-vswe+cgvic/XBoF1OcM/TeJ2FW0OofqAVdCZiEYkd6dwGXthvkSFWOoGGJgS2CW70VK5dQM5Oh+7ne47s74VTg==" crossorigin="anonymous">
 <link rel="stylesheet" href="{$leafBaseUrl}/assets/css/app.css">
+<link rel="stylesheet" href="{$leafBaseUrl}/assets/css/tailwind.css">
+<link rel="stylesheet" href="{$leafBaseUrl}/assets/css/site.css">
 <script src="{$leafBaseUrl}/assets/js/theme.js"></script>
 {if defined('DEV_SERVER')}
 <script>

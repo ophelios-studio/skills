@@ -1,0 +1,19 @@
+/* Retheme the public properties of the theme, loaded after app.css by
+   templates/partials/head.latte. Light mode needs all three selectors. */
+
+:root {
+    --accent: #00d9b1;
+    --accent-light: #34ebc9;
+}
+
+[data-theme="light"] {
+    --accent: #00806a;
+    --accent-light: #00806a;
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        --accent: #00806a;
+        --accent-light: #00806a;
+    }
+}

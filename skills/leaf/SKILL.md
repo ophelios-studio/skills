@@ -636,4 +636,4 @@ APP_DEBUG=false "$RUNNER_TEMP/leaf" build
 - A real multi-locale Binary-tier site with SEO overrides and a sitemap
   hook: https://github.com/zephyrus-framework/site
 - In this repository: `examples/leaf/`, a minimal Binary-tier site with
-  the layout and head overrides above (no em-dash, canonical, hreflang).
+  the head override above (canonical, hreflang, og:image) and a retheme.

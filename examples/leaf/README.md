@@ -1,16 +1,15 @@
 # Leaf example
 
-Minimal Binary-tier Leaf project: one Markdown page and the two template
-overrides most real sites need. Verified with the leaf CLI v0.1.7.
+Minimal Binary-tier Leaf project: one Markdown page, a head override for
+SEO and a small retheme. Verified with the leaf CLI v1.0.0.
 
 ## Layout
 
 ```
 config.yml                          # Site config (the leaf: section drives everything)
 content/getting-started/intro.md    # A page with YAML front matter
-templates/layouts/docs.latte        # Override: bundled docs layout, middle dot in <title>
-templates/partials/head.latte       # Override: bundled head, middle dots, canonical, hreflang, og:image
-public/assets/css/app.css           # Replaces the bundled stylesheet (same path)
+templates/partials/head.latte       # Override: bundled head plus canonical, hreflang, og:image, site.css
+public/assets/css/site.css          # Retheme: the theme's public CSS properties
 ```
 
 ## Build it
@@ -40,21 +39,21 @@ Or from anywhere: `leaf build --dir examples/leaf`. The output lands in
   and the meta description.
 - **`leaf.sections`** ordering and labelling the sidebar (a section folder
   it does not list still shows, after the declared ones).
-- **Exact-path overrides**: `templates/layouts/docs.latte` and
-  `templates/partials/head.latte` replace the bundled files of the same
-  path. Their `{include}` paths are relative to the including file
-  (`'../partials/head.latte'`).
-- **No em-dash**: the bundled theme separates titles with an em-dash in
-  three places; these two overrides swap all of them.
-- **Canonical, hreflang and og:image** built from `$section`, `$slug` and
-  `$pagePath`, since nothing on the Binary tier sets `$requestPath`.
-  `production_url` is set, so the build also writes `sitemap.xml` and
-  `robots.txt`. The og:image file itself
+- **Exact-path override**: `templates/partials/head.latte` replaces the
+  bundled file of the same path, copied from the 1.0.0 theme. It keeps the
+  theme's `tailwind.css` link (no Tailwind CDN: the theme ships the compiled
+  sheet) and its document titles, which already use a middle dot in 1.0.0.
+- **Canonical, hreflang and og:image**, which the bundled head does not
+  emit, built from `$section`, `$slug` and `$pagePath`, since nothing on the
+  Binary tier sets `$requestPath`. `production_url` is set, so the build also
+  writes `sitemap.xml` and `robots.txt`. The og:image file itself
   (`public/assets/og/og-default.png`, 1200x630) is not included.
-- **`public/` replaces bundled assets by path**: this `app.css` replaces
-  the bundled stylesheet (so the docs layout loses most of its styling);
-  the bundled scripts in `public/assets/js/` still ship because this
-  project has none of its own.
+- **Retheming without replacing `app.css`**: `public/assets/css/site.css`
+  sets the theme's public properties (`--accent`, `--accent-light`) under
+  `:root`, `[data-theme="light"]` and `:root:not([data-theme="dark"])` in
+  `@media (prefers-color-scheme: light)`, and the head links it after the
+  theme's stylesheets. A file at the bundled path (`app.css`) would replace
+  the whole stylesheet instead.
 
 ## Not here
 
